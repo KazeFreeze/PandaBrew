@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 import ttkbootstrap as ttkb
 from pathlib import Path
+from typing import Dict, Any
 
 
 class UIComponents:
@@ -14,25 +15,29 @@ class UIComponents:
         self.app = app_instance
         self.notebook = None
 
-    def create_main_layout(self):
+    def create_main_layout(self) -> None:
         """
         Creates the main layout of the application, including the tab container
         and the final control/status bar section.
         """
-        # A container to hold the notebook and the tab control buttons
         top_frame = ttkb.Frame(self.app.root)
         top_frame.pack(expand=True, fill="both", padx=10, pady=(10, 0))
 
-        # Create the notebook and assign it to both this class and the main app
         self.notebook = ttk.Notebook(top_frame)
         self.app.notebook = self.notebook
         self.notebook.pack(side="left", expand=True, fill="both")
 
-        # Create a frame for the tab control buttons (+ and x)
-        button_frame = ttkb.Frame(top_frame)
+        self._create_tab_control_buttons(top_frame)
+
+        control_container = ttkb.Frame(self.app.root, padding=(10, 10))
+        control_container.pack(fill="x", side="bottom")
+        self.create_control_buttons(control_container)
+
+    def _create_tab_control_buttons(self, parent: ttkb.Frame) -> None:
+        """Creates the '+' and 'x' buttons for tab management."""
+        button_frame = ttkb.Frame(parent)
         button_frame.pack(side="left", anchor="n", fill="y", padx=(2, 0), pady=2)
 
-        # Add a button to create new tabs
         add_tab_button = ttkb.Button(
             button_frame,
             text="+",
@@ -42,22 +47,18 @@ class UIComponents:
         )
         add_tab_button.pack(side="top", fill="x")
 
-        # Add a button to close the current tab
         close_tab_button = ttkb.Button(
             button_frame,
-            text="✕",  # A nicer unicode 'x'
+            text="✕",
             width=2,
             command=self.app.close_current_tab,
             bootstyle="danger-outline",
         )
         close_tab_button.pack(side="top", fill="x", pady=(4, 0))
 
-        # Container for the bottom controls (extract button, progress bar, etc.)
-        control_container = ttkb.Frame(self.app.root, padding=(10, 10))
-        control_container.pack(fill="x", side="bottom")
-        self.create_control_buttons(control_container)
-
-    def create_tab_ui(self, parent_tab_frame, tab_data):
+    def create_tab_ui(
+        self, parent_tab_frame: ttkb.Frame, tab_data: Dict[str, Any]
+    ) -> None:
         """
         Creates the UI for a single tab's content area.
         """
@@ -78,7 +79,10 @@ class UIComponents:
         tree_container.pack(fill="both", expand=True)
         self.create_tree_view(tree_container, tab_data)
 
-    def create_path_selection(self, parent, tab_data):
+    def create_path_selection(
+        self, parent: ttkb.Frame, tab_data: Dict[str, Any]
+    ) -> None:
+        """Creates the source directory selection widgets."""
         source_section = ttkb.Frame(parent)
         source_section.pack(fill="x", pady=(0, 10))
         ttkb.Label(
@@ -96,11 +100,18 @@ class UIComponents:
             source_input_frame, text="Browse", command=self.app.browse_source
         ).pack(side="right")
 
-    def create_options_section(self, parent):
+    def create_options_section(self, parent: ttkb.Frame) -> None:
+        """Creates the selection mode and output options widgets."""
         options_frame = ttkb.Frame(parent)
         options_frame.pack(fill="x", expand=True, pady=(10, 0))
         options_frame.grid_columnconfigure(2, weight=1)
-        mode_frame = ttkb.Frame(options_frame)
+        self._create_selection_mode_widgets(options_frame)
+        self._create_output_content_widgets(options_frame)
+        self._create_output_file_widgets(options_frame)
+
+    def _create_selection_mode_widgets(self, parent: ttkb.Frame) -> None:
+        """Creates the 'Include/Exclude' radio buttons."""
+        mode_frame = ttkb.Frame(parent)
         mode_frame.grid(row=0, column=0, padx=(0, 30), sticky="w")
         ttkb.Label(
             mode_frame, text="Selection Mode:", font=("Segoe UI", 9, "bold")
@@ -119,7 +130,10 @@ class UIComponents:
             variable=self.app.include_mode,
             value=False,
         ).pack(side="left")
-        output_options_frame = ttkb.Frame(options_frame)
+
+    def _create_output_content_widgets(self, parent: ttkb.Frame) -> None:
+        """Creates the 'Filenames only' checkbox."""
+        output_options_frame = ttkb.Frame(parent)
         output_options_frame.grid(row=0, column=1, padx=(0, 30), sticky="w")
         ttkb.Label(
             output_options_frame, text="Output Content:", font=("Segoe UI", 9, "bold")
@@ -129,7 +143,10 @@ class UIComponents:
         ttkb.Checkbutton(
             content_frame, text="Filenames only", variable=self.app.filenames_only
         ).pack(anchor="w")
-        output_section = ttkb.Frame(options_frame)
+
+    def _create_output_file_widgets(self, parent: ttkb.Frame) -> None:
+        """Creates the output file selection widgets."""
+        output_section = ttkb.Frame(parent)
         output_section.grid(row=0, column=2, sticky="ew")
         ttkb.Label(
             output_section, text="Output File:", font=("Segoe UI", 9, "bold")
@@ -144,20 +161,19 @@ class UIComponents:
             output_input_frame, text="Save As", command=self.app.browse_output
         ).pack(side="right")
 
-    def create_tree_view(self, parent, tab_data):
+    def create_tree_view(self, parent: ttkb.Frame, tab_data: Dict[str, Any]) -> None:
+        """Creates the scrollable tree view."""
         tree_container = ttkb.Frame(parent)
         tree_container.pack(fill="both", expand=True)
         canvas = tk.Canvas(
             tree_container, highlightthickness=0, bg=self.app.root.style.colors.bg
         )
-        # Store canvas in tab_data for scroll wheel access
         tab_data["canvas"] = canvas
 
         scrollbar = ttkb.Scrollbar(
             tree_container, orient="vertical", command=canvas.yview
         )
         scrollable_frame = ttkb.Frame(canvas)
-        # Store scrollable_frame in tab_data for easy access
         tab_data["scrollable_frame"] = scrollable_frame
 
         scrollable_frame.bind(
@@ -168,6 +184,12 @@ class UIComponents:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
+        self._create_tree_control_buttons(parent, tab_data)
+
+    def _create_tree_control_buttons(
+        self, parent: ttkb.Frame, tab_data: Dict[str, Any]
+    ) -> None:
+        """Creates the 'Select All', 'Deselect All', and 'Refresh' buttons."""
         tree_controls = ttkb.Frame(parent)
         tree_controls.pack(fill="x", pady=(10, 0))
         ttkb.Button(
@@ -189,8 +211,14 @@ class UIComponents:
             bootstyle="info-outline",
         ).pack(side="left")
 
-    def create_control_buttons(self, parent):
+    def create_control_buttons(self, parent: ttkb.Frame) -> None:
+        """Creates the main 'Extract Code' button, progress bar, and status label."""
         parent.grid_columnconfigure(1, weight=1)
+        self._create_left_controls(parent)
+        self._create_center_controls(parent)
+
+    def _create_left_controls(self, parent: ttkb.Frame) -> None:
+        """Creates the 'Extract Code' button."""
         left_controls = ttkb.Frame(parent)
         left_controls.grid(row=0, column=0, sticky="w")
         extract_btn = ttkb.Button(
@@ -201,6 +229,8 @@ class UIComponents:
         )
         extract_btn.pack(side="left", padx=(0, 10))
 
+    def _create_center_controls(self, parent: ttkb.Frame) -> None:
+        """Creates the progress bar and status label."""
         center_controls = ttkb.Frame(parent)
         center_controls.grid(row=0, column=1, sticky="ew", padx=20)
         self.app.progress = ttkb.Progressbar(

@@ -1,13 +1,12 @@
 from pathlib import Path
+from typing import Dict
 
 
-def format_file_size(size):
+def format_file_size(size: int) -> str:
     """
     Formats a file size in bytes into a human-readable string.
-
     Args:
         size (int): The size of the file in bytes.
-
     Returns:
         str: A formatted string representing the file size (e.g., "1.2 MB").
     """
@@ -20,11 +19,11 @@ def format_file_size(size):
     return f"{size:.1f} TB"
 
 
-def get_language_for_highlighting(suffix):
+def get_language_for_highlighting(suffix: str) -> str:
     """
     This function is no longer used for the output file but kept for potential future use.
     """
-    lang_map = {
+    lang_map: Dict[str, str] = {
         ".py": "python",
         ".js": "javascript",
         ".html": "html",
