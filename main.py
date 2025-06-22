@@ -6,9 +6,14 @@ if __name__ == "__main__":
     """
     Main entry point for the Code Extractor Pro application.
     """
-    # Use ttkbootstrap Window
-    root = ttkb.Window(themename="litera")
-    pywinstyles.apply_style(root, "dark")
+    # Use ttkbootstrap Window with the 'darkly' theme
+    root = ttkb.Window(themename="darkly")
+
+    # Apply a dark, mica style to the window for better performance
+    pywinstyles.apply_style(root, "mica")
+    # Set a lighter, less saturated blue tint color
+    pywinstyles.set_opacity(root, color="#2c3e50")
+
     app = ModernCodeExtractorGUI(root)
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()

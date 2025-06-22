@@ -10,6 +10,9 @@ from typing import Set, List, Dict, Any, Optional
 
 from utils.helpers import format_file_size
 
+# Define consistent fonts for the terminal theme
+TERMINAL_FONT = ("Cascadia Code", 9)
+
 
 class ThreadedFileProcessor:
     """
@@ -45,25 +48,32 @@ class ThreadedFileProcessor:
         msg_type = message.get("type")
 
         if msg_type == "progress":
-            self.app.progress["value"] = message["value"]
-            self.app.status_label["text"] = message["status"]
+            if self.app.progress:
+                self.app.progress["value"] = message["value"]
+            if self.app.status_label:
+                self.app.status_label["text"] = message["status"]
 
         elif msg_type == "complete":
-            self.app.progress["value"] = 100
-            self.app.status_label["text"] = message["status"]
+            if self.app.progress:
+                self.app.progress["value"] = 100
+            if self.app.status_label:
+                self.app.status_label["text"] = message["status"]
             self.is_processing = False
             self.app.set_ui_processing_state(False)
             self._show_success_dialog(message["title"], message["message"])
 
         elif msg_type == "error":
-            self.app.status_label["text"] = "Error occurred"
+            if self.app.status_label:
+                self.app.status_label["text"] = "Error occurred"
             self.is_processing = False
             self.app.set_ui_processing_state(False)
             Messagebox.show_error("Error", message["message"], parent=self.app.root)
 
         elif msg_type == "cancelled":
-            self.app.status_label["text"] = "Operation cancelled"
-            self.app.progress["value"] = 0
+            if self.app.status_label:
+                self.app.status_label["text"] = "Operation cancelled"
+            if self.app.progress:
+                self.app.progress["value"] = 0
             self.is_processing = False
             self.app.set_ui_processing_state(False)
 
@@ -83,12 +93,12 @@ class ThreadedFileProcessor:
             return
 
         source = active_tab["source_path"].get()
-        output = self.app.output_path.get()
+        output = active_tab["output_path"].get()
 
         if not source or not output:
             Messagebox.show_error(
                 "Error",
-                "Please select a source directory and an output file.",
+                "Please select a source directory and an output file for the current tab.",
                 parent=self.app.root,
             )
             return
@@ -208,44 +218,52 @@ class ThreadedFileProcessor:
         total_files: int,
     ):
         """Writes the final report with cancellation checks and progress updates."""
-        with open(output, "w", encoding="utf-8", errors="ignore") as f:
-            self._write_report_header(f, include_mode)
+        try:
+            with open(output, "w", encoding="utf-8", errors="ignore") as f:
+                self._write_report_header(f, include_mode)
 
-            # --- Write Structure ---
-            self.progress_queue.put(
-                {
-                    "type": "progress",
-                    "value": 25,
-                    "status": "Writing project structure...",
-                }
-            )
-            if self.cancel_event.is_set():
-                self.progress_queue.put({"type": "cancelled"})
-                return
+                # --- Write Structure ---
+                self.progress_queue.put(
+                    {
+                        "type": "progress",
+                        "value": 25,
+                        "status": "Writing project structure...",
+                    }
+                )
+                if self.cancel_event.is_set():
+                    self.progress_queue.put({"type": "cancelled"})
+                    return
 
-            self._write_project_structure_ascii(
-                f, source_path, paths_for_structure, selected_paths, include_mode
-            )
-
-            # --- Write File Contents ---
-            if not self.app.filenames_only.get():
-                self._write_file_contents_threaded(
-                    f, files_to_process, source_path, total_files
+                self._write_project_structure_ascii(
+                    f, source_path, paths_for_structure, selected_paths, include_mode
                 )
 
-        # If cancelled, the file write loop will exit, so we don't send complete.
-        if self.cancel_event.is_set():
-            return
+                # --- Write File Contents ---
+                if not self.app.filenames_only.get():
+                    self._write_file_contents_threaded(
+                        f, files_to_process, source_path, total_files
+                    )
 
-        # --- Success Message ---
-        self.progress_queue.put(
-            {
-                "type": "complete",
-                "title": "Success",
-                "message": f"Extraction Complete\n\n{total_files} files processed.\n\nOutput saved to:\n{output}",
-                "status": f"Extraction complete. {total_files} files processed.",
-            }
-        )
+            # If cancelled, the file write loop will exit, so we don't send complete.
+            if self.cancel_event.is_set():
+                return
+
+            # --- Success Message ---
+            self.progress_queue.put(
+                {
+                    "type": "complete",
+                    "title": "Success",
+                    "message": f"Extraction Complete\n\n{total_files} files processed.\n\nOutput saved to:\n{output}",
+                    "status": f"Extraction complete. {total_files} files processed.",
+                }
+            )
+        except IOError as e:
+            self.progress_queue.put(
+                {
+                    "type": "error",
+                    "message": f"Could not write to output file:\n{output}\n\nError: {e}",
+                }
+            )
 
     def _write_file_contents_threaded(
         self,
@@ -357,15 +375,19 @@ class ThreadedFileProcessor:
 
         def build_tree(current_path, prefix=""):
             try:
+                # Get all children, not just those in paths_for_structure initially
                 children = sorted(
-                    [p for p in current_path.iterdir() if p in paths_for_structure],
+                    list(current_path.iterdir()),
                     key=lambda p: (p.is_file(), p.name.lower()),
                 )
             except (IOError, PermissionError):
                 children = []
 
-            for i, child in enumerate(children):
-                is_last = i == len(children) - 1
+            # Filter children to only those that should be part of the tree
+            displayable_children = [p for p in children if p in paths_for_structure]
+
+            for i, child in enumerate(displayable_children):
+                is_last = i == len(displayable_children) - 1
                 connector = "└── " if is_last else "├── "
                 f.write(f"{prefix}{connector}{child.name}")
 
@@ -375,6 +397,7 @@ class ThreadedFileProcessor:
 
                 if not is_processed:
                     f.write(" [EXCLUDED]\n")
+                    # If a directory is excluded, don't recurse into it
                     if child.is_dir():
                         continue
                 else:
@@ -395,9 +418,14 @@ class ThreadedFileProcessor:
         )
 
     def _show_centered_success_dialog(self, title: str, message: str):
-        """Shows a success dialog centered on the main window."""
+        """Shows a success dialog centered on the main window with the new theme."""
         dialog = tk.Toplevel(self.app.root)
         dialog.title(title)
+
+        # Apply theme to the dialog
+        dialog.configure(bg=self.app.style.colors.get("bg"))
+
+        # Make the dialog transient to the main window
         dialog.transient(self.app.root)
         dialog.grab_set()
         dialog.resizable(False, False)
@@ -409,13 +437,13 @@ class ThreadedFileProcessor:
             main_frame,
             text=message,
             justify="left",
-            font=("Segoe UI", 9),
+            font=TERMINAL_FONT,
             wraplength=400,
         )
         message_label.pack(pady=(0, 20))
 
         ok_button = ttkb.Button(
-            main_frame, text="OK", command=dialog.destroy, bootstyle="primary"
+            main_frame, text="OK", command=dialog.destroy, bootstyle="success"
         )
         ok_button.pack()
         ok_button.focus_set()
@@ -423,16 +451,14 @@ class ThreadedFileProcessor:
         dialog.bind("<Return>", lambda e: dialog.destroy())
         dialog.bind("<Escape>", lambda e: dialog.destroy())
 
+        # Center the dialog on the parent window
         dialog.update_idletasks()
-
         parent_x = self.app.root.winfo_x()
         parent_y = self.app.root.winfo_y()
         parent_width = self.app.root.winfo_width()
         parent_height = self.app.root.winfo_height()
         dialog_width = dialog.winfo_reqwidth()
         dialog_height = dialog.winfo_reqheight()
-
         pos_x = parent_x + (parent_width // 2) - (dialog_width // 2)
         pos_y = parent_y + (parent_height // 2) - (dialog_height // 2)
-
         dialog.geometry(f"+{pos_x}+{pos_y}")
