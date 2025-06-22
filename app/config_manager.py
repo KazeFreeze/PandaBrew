@@ -1,6 +1,13 @@
 import json
 import hashlib
 from pathlib import Path
+from typing import Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .app import ModernCodeExtractorGUI
+
+
+CONFIG_FILE_NAME = ".code_extractor_pro_config.json"
 
 
 class ConfigManager:
@@ -9,18 +16,21 @@ class ConfigManager:
     now supporting multiple open tabs and persistent selections.
     """
 
-    def __init__(self, app_instance):
+    def __init__(self, app_instance: "ModernCodeExtractorGUI"):
+        """
+        Initializes the ConfigManager.
+        """
         self.app = app_instance
-        self.config_file = Path.home() / ".code_extractor_pro_config.json"
+        self.config_file = Path.home() / CONFIG_FILE_NAME
 
-    def load_app_state(self):
+    def load_app_state(self) -> Dict[str, Any]:
         """
         Loads the configuration from a JSON file.
         If the file doesn't exist or is invalid, it creates a default configuration.
         """
         try:
             if self.config_file.exists():
-                with open(self.config_file, "r") as f:
+                with self.config_file.open("r") as f:
                     config = json.load(f)
                     if not isinstance(config, dict):
                         return self.get_default_config()
@@ -34,7 +44,7 @@ class ConfigManager:
             print(f"Error loading config, resetting to default: {e}")
             return self.get_default_config()
 
-    def get_default_config(self):
+    def get_default_config(self) -> Dict[str, Any]:
         """
         Returns a dictionary with the default configuration settings.
         """
@@ -46,25 +56,22 @@ class ConfigManager:
             "filenames_only": False,
         }
 
-    def save_app_state(self):
+    def save_app_state(self) -> None:
         """
         Saves the current application state to the JSON file.
         This includes all open tab paths and current selections for all tabs.
         """
         try:
-            # First, update the selections in the central config object from each tab
             for tab_data in self.app.tabs.values():
                 if tab_data["source_path"].get():
                     self.save_selections(tab_data)
 
-            # Get the list of currently open tab paths
             open_tab_paths = [
                 t["source_path"].get()
                 for t in self.app.tabs.values()
                 if t["source_path"].get()
             ]
 
-            # Limit saved tabs to the most recent 10
             recent_tab_paths = open_tab_paths[-10:]
 
             config_to_save = {
@@ -75,13 +82,13 @@ class ConfigManager:
                 "filenames_only": self.app.filenames_only.get(),
             }
 
-            with open(self.config_file, "w") as f:
+            with self.config_file.open("w") as f:
                 json.dump(config_to_save, f, indent=2)
                 print(f"Config saved to {self.config_file}")
         except Exception as e:
             print(f"Error saving config: {e}")
 
-    def save_selections(self, tab_data):
+    def save_selections(self, tab_data: Dict[str, Any]) -> None:
         """
         Saves the current checked paths for a given tab's source directory.
         The paths are stored relative to the source directory root.
@@ -94,7 +101,6 @@ class ConfigManager:
         tree_manager = tab_data["tree_view_manager"]
         source_path = Path(source_path_str)
 
-        # Convert absolute checked paths to relative paths for stable storage
         relative_checked_paths = [
             str(Path(p).relative_to(source_path)) for p in tree_manager.checked_paths
         ]
@@ -102,10 +108,9 @@ class ConfigManager:
         if "selections" not in self.app.config:
             self.app.config["selections"] = {}
 
-        # Store the list of relative paths
         self.app.config["selections"][source_hash] = sorted(relative_checked_paths)
 
-    def load_selections(self, tab_data):
+    def load_selections(self, tab_data: Dict[str, Any]) -> None:
         """
         Loads the saved checked paths for a given tab's source directory
         and populates the TreeViewManager's checked_paths set.
@@ -123,7 +128,6 @@ class ConfigManager:
         tree_manager = tab_data["tree_view_manager"]
         source_path = Path(source_path_str)
 
-        # Clear previous selections and load new ones
         tree_manager.checked_paths.clear()
         for rel_path in selections:
             full_path = source_path / rel_path
