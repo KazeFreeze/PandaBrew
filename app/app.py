@@ -1,5 +1,7 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import filedialog
+import ttkbootstrap as ttkb
+from ttkbootstrap.dialogs import Messagebox
 from pathlib import Path
 
 from .config_manager import ConfigManager
@@ -19,7 +21,7 @@ class ModernCodeExtractorGUI:
         Initializes the main application window.
 
         Args:
-            root (tk.Tk): The root Tkinter window.
+            root (ttkb.Window): The root ttkbootstrap window.
         """
         self.root = root
         self.root.title("Code Extractor Pro")
@@ -29,8 +31,6 @@ class ModernCodeExtractorGUI:
         # Initialize managers and components, passing the app instance (self)
         self.config_manager = ConfigManager(self)
         self.config = self.config_manager.load_config()
-
-        self.setup_modern_style()
 
         self.include_mode = tk.BooleanVar(value=True)
         self.filenames_only = tk.BooleanVar(value=False)
@@ -51,34 +51,6 @@ class ModernCodeExtractorGUI:
         if self.config.get("last_output"):
             self.output_path.set(self.config["last_output"])
 
-    def setup_modern_style(self):
-        """
-        Configures the modern theme and styles for the application's widgets.
-        """
-        style = ttk.Style()
-        try:
-            style.theme_use("vista")
-        except:
-            try:
-                style.theme_use("winnative")
-            except:
-                pass
-
-        style.configure("Modern.TFrame", background="#f0f0f0")
-        style.configure(
-            "TLabelFrame", background="#ffffff", relief="flat", borderwidth=1
-        )
-        style.configure(
-            "TLabelFrame.Label",
-            background="#ffffff",
-            foreground="#333333",
-            font=("Segoe UI", 10, "bold"),
-        )
-        style.configure("Modern.TButton", padding=(12, 8))
-        style.configure("Accent.TButton", background="#0078d4", foreground="white")
-        style.configure("Success.TButton", background="#107c10", foreground="white")
-        self.root.configure(bg="#f0f0f0")
-
     def browse_source(self):
         """
         Opens a dialog to select the source directory and updates the tree view.
@@ -98,7 +70,6 @@ class ModernCodeExtractorGUI:
             defaultextension=".txt",
             filetypes=[
                 ("Text files", "*.txt"),
-                ("Markdown files", "*.md"),
                 ("All files", "*.*"),
             ],
         )

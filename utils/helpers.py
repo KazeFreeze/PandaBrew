@@ -1,39 +1,45 @@
-def get_file_icon(path):
+from pathlib import Path
+
+
+def get_icon(path):
     """
-    Returns an emoji icon based on the file's extension.
+    Returns a text-based icon for a given file or directory path.
 
     Args:
-        path (Path): The path of the file.
+        path (Path): The path of the file or directory.
 
     Returns:
-        str: An emoji representing the file type.
+        str: A text-based icon.
     """
+    if path.is_dir():
+        return "[D]"
+
     suffix = path.suffix.lower()
     icon_map = {
-        ".py": "🐍",
-        ".js": "📜",
-        ".html": "🌐",
-        ".css": "🎨",
-        ".json": "📋",
-        ".txt": "📄",
-        ".md": "📝",
-        ".yml": "⚙️",
-        ".yaml": "⚙️",
-        ".xml": "📰",
-        ".png": "🖼️",
-        ".jpg": "🖼️",
-        ".jpeg": "🖼️",
-        ".gif": "🖼️",
-        ".svg": "🖼️",
-        ".zip": "📦",
-        ".tar": "📦",
-        ".gz": "📦",
-        ".rar": "📦",
-        ".exe": "⚙️",
-        ".bat": "⚙️",
-        ".sh": "⚙️",
+        ".py": "[Py]",
+        ".js": "[JS]",
+        ".html": "[H]",
+        ".css": "[C]",
+        ".json": "[J]",
+        ".txt": "[T]",
+        ".md": "[M]",
+        ".yml": "[Y]",
+        ".yaml": "[Y]",
+        ".xml": "[X]",
+        ".png": "[I]",
+        ".jpg": "[I]",
+        ".jpeg": "[I]",
+        ".gif": "[I]",
+        ".svg": "[I]",
+        ".zip": "[Z]",
+        ".tar": "[Z]",
+        ".gz": "[Z]",
+        ".rar": "[Z]",
+        ".exe": "[E]",
+        ".bat": "[B]",
+        ".sh": "[S]",
     }
-    return icon_map.get(suffix, "📄")
+    return icon_map.get(suffix, "[-]")
 
 
 def format_file_size(size):
@@ -46,6 +52,8 @@ def format_file_size(size):
     Returns:
         str: A formatted string representing the file size (e.g., "1.2 MB").
     """
+    if size < 1024:
+        return f"{size} B"
     for unit in ["B", "KB", "MB", "GB"]:
         if size < 1024.0:
             return f"{size:.1f} {unit}"
@@ -55,13 +63,7 @@ def format_file_size(size):
 
 def get_language_for_highlighting(suffix):
     """
-    Gets the language identifier for syntax highlighting in Markdown.
-
-    Args:
-        suffix (str): The file extension.
-
-    Returns:
-        str: The language identifier (e.g., "python", "javascript").
+    This function is no longer used for the output file but kept for potential future use.
     """
     lang_map = {
         ".py": "python",

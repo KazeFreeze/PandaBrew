@@ -1,7 +1,8 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+import ttkbootstrap as ttkb
+from ttkbootstrap.dialogs import Messagebox
 from pathlib import Path
-from utils.helpers import get_file_icon, format_file_size
+from utils.helpers import get_icon, format_file_size
 
 
 class TreeItem:
@@ -12,10 +13,6 @@ class TreeItem:
     def __init__(self, path, parent=None):
         """
         Initializes a TreeItem.
-
-        Args:
-            path (Path): The path to the file or directory.
-            parent (TreeItem, optional): The parent of this item. Defaults to None.
         """
         self.path = Path(path)
         self.parent = parent
@@ -36,9 +33,6 @@ class TreeViewManager:
     def __init__(self, app_instance):
         """
         Initializes the TreeViewManager.
-
-        Args:
-            app_instance: An instance of the main application class.
         """
         self.app = app_instance
         self.tree_items = {}
@@ -46,59 +40,55 @@ class TreeViewManager:
     def create_tree_item(self, parent_path, parent_widget, level=0):
         """
         Creates a single item (file or directory) in the tree view.
-
-        Args:
-            parent_path (str): The path of the item to create.
-            parent_widget (tk.Widget): The parent widget to place the item in.
-            level (int, optional): The indentation level of the item. Defaults to 0.
         """
         try:
             path = Path(parent_path)
 
-            item_frame = ttk.Frame(parent_widget)
+            item_frame = ttkb.Frame(parent_widget)
             item_frame.pack(fill="x", pady=1)
 
-            indent_frame = ttk.Frame(item_frame)
+            indent_frame = ttkb.Frame(item_frame)
             indent_frame.pack(side="left", padx=(level * 25, 0))
 
             tree_item = TreeItem(path)
             self.tree_items[str(path)] = tree_item
 
-            chk_frame = ttk.Frame(indent_frame)
+            chk_frame = ttkb.Frame(indent_frame)
             chk_frame.pack(side="left")
 
-            chk = ttk.Checkbutton(chk_frame, variable=tree_item.checked)
+            chk = ttkb.Checkbutton(chk_frame, variable=tree_item.checked)
             chk.pack(side="left")
 
             if path.is_dir():
                 try:
                     has_contents = any(True for _ in path.iterdir())
                     if has_contents:
-                        btn = ttk.Button(
+                        btn = ttkb.Button(
                             chk_frame,
-                            text="▶",
+                            text="+",
                             width=3,
                             command=lambda p=path, f=item_frame: self.toggle_expand(
                                 p, f
                             ),
+                            bootstyle="light-outline",
                         )
                         btn.pack(side="left", padx=(5, 0))
                         tree_item.expand_button = btn
                     else:
-                        ttk.Label(chk_frame, width=3).pack(side="left", padx=(5, 0))
+                        ttkb.Label(chk_frame, width=3).pack(side="left", padx=(5, 0))
                 except PermissionError:
-                    ttk.Label(chk_frame, text="🔒", width=3).pack(
+                    ttkb.Label(chk_frame, text="X", width=3).pack(
                         side="left", padx=(5, 0)
                     )
             else:
-                ttk.Label(chk_frame, width=3).pack(side="left", padx=(5, 0))
+                ttkb.Label(chk_frame, width=3).pack(side="left", padx=(5, 0))
 
-            label_frame = ttk.Frame(indent_frame)
+            label_frame = ttkb.Frame(indent_frame)
             label_frame.pack(side="left", fill="x", expand=True, padx=(10, 0))
 
-            icon = get_file_icon(path) if path.is_file() else "📁"
+            icon = get_icon(path)
 
-            item_label = ttk.Label(
+            item_label = ttkb.Label(
                 label_frame,
                 text=f"{icon} {path.name or str(path)}",
                 font=("Segoe UI", 9),
@@ -109,11 +99,10 @@ class TreeViewManager:
                 try:
                     size = path.stat().st_size
                     size_str = format_file_size(size)
-                    size_label = ttk.Label(
+                    size_label = ttkb.Label(
                         label_frame,
                         text=f"({size_str})",
                         font=("Segoe UI", 8),
-                        foreground="gray",
                     )
                     size_label.pack(side="left", padx=(10, 0))
                 except:
@@ -127,10 +116,6 @@ class TreeViewManager:
     def toggle_expand(self, path, parent_frame):
         """
         Expands or collapses a directory in the tree view, loading its contents if necessary.
-
-        Args:
-            path (Path): The path of the directory to toggle.
-            parent_frame (tk.Widget): The frame containing the directory item.
         """
         tree_item = self.tree_items[str(path)]
         button = tree_item.expand_button
@@ -138,8 +123,8 @@ class TreeViewManager:
             return
 
         if not tree_item.expanded:
-            button.configure(text="▼")
-            container_frame = ttk.Frame(parent_frame.master)
+            button.configure(text="-")
+            container_frame = ttkb.Frame(parent_frame.master)
             container_frame.pack(fill="x", after=parent_frame)
             tree_item.container = container_frame
 
@@ -152,10 +137,11 @@ class TreeViewManager:
                         item,
                         container_frame,
                         level=len(Path(path).parts)
-                        - len(Path(self.app.source_path.get()).parts),
+                        - len(Path(self.app.source_path.get()).parts)
+                        + 1,
                     )
             except PermissionError:
-                messagebox.showwarning(
+                Messagebox.show_warning(
                     "Permission Denied", f"Cannot access contents of {path.name}"
                 )
 
@@ -163,9 +149,11 @@ class TreeViewManager:
             tree_item.is_loaded = True
             self.app.config_manager.load_selections()
         else:
-            button.configure(text="▶")
+            button.configure(text="+")
 
             if hasattr(tree_item, "container") and tree_item.container:
+                for widget in tree_item.container.winfo_children():
+                    widget.destroy()
                 tree_item.container.destroy()
                 tree_item.container = None
 
