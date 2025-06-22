@@ -1,57 +1,68 @@
 import tkinter as tk
+from tkinter import ttk
 import ttkbootstrap as ttkb
+from pathlib import Path
 
 
 class UIComponents:
     """
-    Manages the creation and layout of all the UI components in the main window.
+    Manages the creation and layout of all the UI components.
+    The structure is now split between a main layout and the UI for each tab.
     """
 
     def __init__(self, app_instance):
         """
         Initializes the UIComponents class.
-
-        Args:
-            app_instance: An instance of the main application class.
         """
         self.app = app_instance
 
-    def create_modern_gui(self):
+    def create_main_layout(self):
         """
-        Creates the main graphical user interface for the application.
+        Creates the main layout of the application, which contains the notebook
+        and the final control/status bar section.
         """
-        main_container = ttkb.Frame(self.app.root, padding=(20, 20))
+        # The notebook is created in app.py and packed there.
+        # This function creates the controls BELOW the notebook.
+
+        control_container = ttkb.Frame(self.app.root, padding=(10, 10))
+        control_container.pack(fill="x", side="bottom")
+
+        self.create_control_buttons(control_container)
+
+    def create_tab_ui(self, parent_tab_frame, tab_data):
+        """
+        Creates the UI for a single tab, including path selection and the tree view.
+        """
+        main_container = ttkb.Frame(parent_tab_frame, padding=(5, 5))
         main_container.pack(fill="both", expand=True)
 
+        # --- Top settings section ---
         header_frame = ttkb.LabelFrame(
             main_container,
-            text="Project Settings",
-            padding=20,
+            text="Directory & Options",
+            padding=15,
         )
-        header_frame.pack(fill="x", pady=(0, 15))
+        header_frame.pack(fill="x", pady=(0, 10))
 
-        self.create_path_selection(header_frame)
+        self.create_path_selection(header_frame, tab_data)
+        # Options are now global but placed here for UI consistency
         self.create_options_section(header_frame)
 
+        # --- Tree view section ---
         tree_frame = ttkb.LabelFrame(
             main_container,
             text="Project Structure",
             padding=15,
         )
-        tree_frame.pack(fill="both", expand=True, pady=(0, 15))
+        tree_frame.pack(fill="both", expand=True)
+        self.create_tree_view(tree_frame, tab_data)
 
-        self.create_tree_view(tree_frame)
-        self.create_control_buttons(main_container)
-
-    def create_path_selection(self, parent):
+    def create_path_selection(self, parent, tab_data):
         """
-        Creates the UI elements for selecting the source and output paths.
-
-        Args:
-            parent (tk.Widget): The parent widget for these components.
+        Creates the UI elements for selecting the source directory for a specific tab.
         """
         source_section = ttkb.Frame(parent)
-        source_section.pack(fill="x", pady=(0, 15))
+        source_section.pack(fill="x", pady=(0, 10))
 
         ttkb.Label(
             source_section, text="Source Directory:", font=("Segoe UI", 9, "bold")
@@ -62,198 +73,144 @@ class UIComponents:
 
         source_entry = ttkb.Entry(
             source_input_frame,
-            textvariable=self.app.source_path,
+            textvariable=tab_data["source_path"],
             font=("Segoe UI", 9),
-            width=80,
         )
         source_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
         ttkb.Button(
             source_input_frame,
             text="Browse",
-            command=self.app.browse_source,
+            command=self.app.browse_source,  # This now correctly targets the active tab
         ).pack(side="right")
-
-        self.create_recent_dropdown(
-            source_input_frame,
-            source_entry,
-            "recent_sources",
-            lambda p: (
-                self.app.source_path.set(p),
-                self.app.tree_view_manager.refresh_tree(),
-            ),
-        )
-
-        output_section = ttkb.Frame(parent)
-        output_section.pack(fill="x", pady=(10, 0))
-
-        ttkb.Label(
-            output_section, text="Output File:", font=("Segoe UI", 9, "bold")
-        ).pack(anchor="w")
-
-        output_input_frame = ttkb.Frame(output_section)
-        output_input_frame.pack(fill="x", pady=(5, 0))
-
-        output_entry = ttkb.Entry(
-            output_input_frame,
-            textvariable=self.app.output_path,
-            font=("Segoe UI", 9),
-            width=80,
-        )
-        output_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
-
-        ttkb.Button(
-            output_input_frame,
-            text="Save As",
-            command=self.app.browse_output,
-        ).pack(side="right")
-
-        self.create_recent_dropdown(
-            output_input_frame,
-            output_entry,
-            "recent_outputs",
-            lambda p: self.app.output_path.set(p),
-        )
-
-    def create_recent_dropdown(self, parent, entry_widget, config_key, command):
-        """
-        Creates a dropdown menu for recently used paths.
-        """
-        if self.app.config.get(config_key):
-            dropdown_btn = ttkb.Button(
-                parent,
-                text="▼",
-                width=3,
-                command=lambda: self.show_recent_menu(
-                    dropdown_btn, config_key, command
-                ),
-            )
-            dropdown_btn.pack(side="right", padx=(5, 0))
-
-    def show_recent_menu(self, button, config_key, command):
-        """
-        Displays the menu of recent paths.
-        """
-        menu = tk.Menu(self.app.root, tearoff=0)
-        for path in reversed(self.app.config.get(config_key, [])):
-            menu.add_command(label=path, command=lambda p=path: command(p))
-
-        x = button.winfo_rootx()
-        y = button.winfo_rooty() + button.winfo_height()
-        menu.post(x, y)
 
     def create_options_section(self, parent):
         """
-        Creates the options section with include/exclude and other settings.
+        Creates the global options section (mode, output content).
         """
-        options_frame = ttkb.LabelFrame(parent, text="Options", padding=10)
-        options_frame.pack(fill="x", pady=(15, 0))
+        options_frame = ttkb.Frame(parent)
+        options_frame.pack(fill="x", expand=True, pady=(10, 0))
+        options_frame.grid_columnconfigure(2, weight=1)
 
+        # --- Selection Mode ---
         mode_frame = ttkb.Frame(options_frame)
-        mode_frame.pack(fill="x", pady=(0, 10))
+        mode_frame.grid(row=0, column=0, padx=(0, 30), sticky="w")
 
         ttkb.Label(
             mode_frame, text="Selection Mode:", font=("Segoe UI", 9, "bold")
         ).pack(anchor="w")
-
         radio_frame = ttkb.Frame(mode_frame)
         radio_frame.pack(fill="x", pady=(5, 0))
-
         ttkb.Radiobutton(
             radio_frame,
-            text="Include checked items",
+            text="Include checked",
             variable=self.app.include_mode,
             value=True,
-        ).pack(side="left", padx=(0, 20))
+        ).pack(side="left", padx=(0, 10))
         ttkb.Radiobutton(
             radio_frame,
-            text="Exclude checked items",
+            text="Exclude checked",
             variable=self.app.include_mode,
             value=False,
         ).pack(side="left")
 
+        # --- Output Content ---
         output_options_frame = ttkb.Frame(options_frame)
-        output_options_frame.pack(fill="x")
-
+        output_options_frame.grid(row=0, column=1, padx=(0, 30), sticky="w")
         ttkb.Label(
             output_options_frame, text="Output Content:", font=("Segoe UI", 9, "bold")
         ).pack(anchor="w")
-
         content_frame = ttkb.Frame(output_options_frame)
         content_frame.pack(fill="x", pady=(5, 0))
-
         ttkb.Checkbutton(
-            content_frame,
-            text="Filenames only (no file content)",
-            variable=self.app.filenames_only,
+            content_frame, text="Filenames only", variable=self.app.filenames_only
         ).pack(anchor="w")
 
-    def create_tree_view(self, parent):
+        # --- Output File ---
+        output_section = ttkb.Frame(options_frame)
+        output_section.grid(row=0, column=2, sticky="ew")
+        ttkb.Label(
+            output_section, text="Output File:", font=("Segoe UI", 9, "bold")
+        ).pack(anchor="w")
+        output_input_frame = ttkb.Frame(output_section)
+        output_input_frame.pack(fill="x", expand=True, pady=(5, 0))
+        output_entry = ttkb.Entry(
+            output_input_frame, textvariable=self.app.output_path, font=("Segoe UI", 9)
+        )
+        output_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        ttkb.Button(
+            output_input_frame, text="Save As", command=self.app.browse_output
+        ).pack(side="right")
+
+    def create_tree_view(self, parent, tab_data):
         """
-        Creates the tree view area with a scrollable canvas.
+        Creates the tree view area for a specific tab.
         """
         tree_container = ttkb.Frame(parent)
         tree_container.pack(fill="both", expand=True)
 
-        self.app.canvas = tk.Canvas(tree_container, highlightthickness=0)
-        self.app.canvas.configure(bg=self.app.root.style.colors.bg)
+        # Store canvas and scrollable_frame in tab_data for access
+        canvas = tk.Canvas(
+            tree_container, highlightthickness=0, bg=self.app.root.style.colors.bg
+        )
+        tab_data["canvas"] = canvas
 
         scrollbar = ttkb.Scrollbar(
-            tree_container, orient="vertical", command=self.app.canvas.yview
+            tree_container, orient="vertical", command=canvas.yview
         )
-        self.app.scrollable_frame = ttkb.Frame(self.app.canvas)
+        scrollable_frame = ttkb.Frame(canvas)
+        tab_data["scrollable_frame"] = scrollable_frame
 
-        self.app.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.app.canvas.configure(
-                scrollregion=self.app.canvas.bbox("all")
+        scrollable_frame.bind(
+            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        canvas.bind_all(
+            "<MouseWheel>",
+            lambda e: self.app.root.nametowidget(e.widget).yview_scroll(
+                int(-1 * (e.delta / 120)), "units"
             ),
         )
 
-        self.app.canvas.create_window(
-            (0, 0), window=self.app.scrollable_frame, anchor="nw"
-        )
-        self.app.canvas.configure(yscrollcommand=scrollbar.set)
-
-        self.app.canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-        def _on_mousewheel(event):
-            self.app.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-        self.app.canvas.bind_all("<MouseWheel>", _on_mousewheel)
-
+        # --- Tree Controls (Select/Deselect/Refresh) ---
         tree_controls = ttkb.Frame(parent)
         tree_controls.pack(fill="x", pady=(10, 0))
 
+        # We need to lambda the tab_data's tree_view_manager
         ttkb.Button(
             tree_controls,
             text="Select All",
-            command=self.app.tree_view_manager.select_all,
+            command=lambda: tab_data["tree_view_manager"].select_all(),
             bootstyle="info-outline",
         ).pack(side="left", padx=(0, 10))
         ttkb.Button(
             tree_controls,
             text="Deselect All",
-            command=self.app.tree_view_manager.deselect_all,
+            command=lambda: tab_data["tree_view_manager"].deselect_all(),
             bootstyle="info-outline",
         ).pack(side="left", padx=(0, 10))
         ttkb.Button(
             tree_controls,
             text="Refresh",
-            command=self.app.tree_view_manager.refresh_tree,
+            command=lambda: tab_data["tree_view_manager"].refresh_tree(),
             bootstyle="info-outline",
         ).pack(side="left")
 
     def create_control_buttons(self, parent):
         """
-        Creates the main control buttons like 'Extract' and the progress bar.
+        Creates the main control buttons (Extract, New Tab) and the progress bar.
+        These are global and reside at the bottom of the main window.
         """
-        control_frame = ttkb.Frame(parent)
-        control_frame.pack(fill="x")
+        parent.grid_columnconfigure(1, weight=1)
 
-        left_controls = ttkb.Frame(control_frame)
-        left_controls.pack(side="left")
+        # --- Left side: Main Actions ---
+        left_controls = ttkb.Frame(parent)
+        left_controls.grid(row=0, column=0, sticky="w")
 
         extract_btn = ttkb.Button(
             left_controls,
@@ -261,10 +218,11 @@ class UIComponents:
             command=self.app.file_processor.process_files,
             bootstyle="success",
         )
-        extract_btn.pack(side="left", padx=(0, 20))
+        extract_btn.pack(side="left", padx=(0, 10))
 
-        center_controls = ttkb.Frame(control_frame)
-        center_controls.pack(side="left", fill="x", expand=True)
+        # --- Center: Progress Bar & Status ---
+        center_controls = ttkb.Frame(parent)
+        center_controls.grid(row=0, column=1, sticky="ew", padx=20)
 
         self.app.progress = ttkb.Progressbar(
             center_controls, length=300, mode="determinate"
@@ -275,3 +233,20 @@ class UIComponents:
             center_controls, text="Ready", font=("Segoe UI", 9)
         )
         self.app.status_label.pack(side="left")
+
+        # --- Right side: Tab Management ---
+        right_controls = ttkb.Frame(parent)
+        right_controls.grid(row=0, column=2, sticky="e")
+
+        ttkb.Button(
+            right_controls,
+            text="New Tab",
+            command=self.app.add_new_tab,
+            bootstyle="primary",
+        ).pack(side="left", padx=(10, 0))
+        ttkb.Button(
+            right_controls,
+            text="Close Tab",
+            command=self.app.close_current_tab,
+            bootstyle="danger-outline",
+        ).pack(side="left", padx=(10, 0))
