@@ -35,6 +35,66 @@ class FileProcessor:
         # The result depends on whether we are in "include" or "exclude" mode.
         return is_selected if include_mode else not is_selected
 
+    def show_centered_success_dialog(self, title: str, message: str) -> None:
+        """
+        Shows a success dialog centered on the main window.
+        """
+        # Create a custom dialog window
+        dialog = tk.Toplevel(self.app.root)
+        dialog.title(title)
+        dialog.transient(self.app.root)
+        dialog.grab_set()
+        
+        # Make it modal and center it
+        dialog.resizable(False, False)
+        
+        # Set up the dialog content
+        main_frame = tk.Frame(dialog, padx=20, pady=20)
+        main_frame.pack(fill="both", expand=True)
+        
+        # Add the message
+        message_label = tk.Label(
+            main_frame, 
+            text=message, 
+            justify="left",
+            font=("Segoe UI", 9),
+            wraplength=400
+        )
+        message_label.pack(pady=(0, 20))
+        
+        # Add OK button
+        ok_button = tk.Button(
+            main_frame,
+            text="OK",
+            command=dialog.destroy,
+            font=("Segoe UI", 9),
+            padx=20,
+            pady=5
+        )
+        ok_button.pack()
+        ok_button.focus_set()
+        
+        # Bind Enter key to close dialog
+        dialog.bind('<Return>', lambda e: dialog.destroy())
+        dialog.bind('<Escape>', lambda e: dialog.destroy())
+        
+        # Update the dialog to get its size
+        dialog.update_idletasks()
+        
+        # Calculate position to center on parent window
+        parent_x = self.app.root.winfo_x()
+        parent_y = self.app.root.winfo_y()
+        parent_width = self.app.root.winfo_width()
+        parent_height = self.app.root.winfo_height()
+        
+        dialog_width = dialog.winfo_reqwidth()
+        dialog_height = dialog.winfo_reqheight()
+        
+        pos_x = parent_x + (parent_width // 2) - (dialog_width // 2)
+        pos_y = parent_y + (parent_height // 2) - (dialog_height // 2)
+        
+        dialog.geometry(f"{dialog_width}x{dialog_height}+{pos_x}+{pos_y}")
+
     def process_files(self) -> None:
         """
         Gathers all selected files, generates the project structure and content,
@@ -138,11 +198,10 @@ class FileProcessor:
             self.app.status_label["text"] = (
                 f"Extraction complete. {total_files} files processed."
             )
-            Messagebox.show_info(
-                title="Success",
-                message=f"Extraction Complete\n\n{total_files} files processed.\n\nOutput saved to:\n{output}",
-                parent=self.app.root,
-            )
+            
+            # Use the custom centered success dialog
+            success_message = f"Extraction Complete\n\n{total_files} files processed.\n\nOutput saved to:\n{output}"
+            self.show_centered_success_dialog("Success", success_message)
 
         except Exception as e:
             self.app.status_label["text"] = "Error occurred"
