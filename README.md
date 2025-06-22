@@ -6,8 +6,8 @@
 
 A modern GUI utility for selectively extracting and packaging project source code into a single, comprehensive text file. Perfect for creating project snapshots for LLMs, documentation, or code reviews.
 
-[![Release Version](https://img.shields.io/github/v/release/YOUR_USERNAME/YOUR_REPOSITORY?style=for-the-badge&logo=github)](https://github.com/KazeFreeze/PandaBrew/releases)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/YOUR_USERNAME/YOUR_REPOSITORY/build-and-release.yml?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/YOUR_USERNAME/YOUR_REPOSITORY/actions/workflows/build-and-release.yml)
+[![Release Version](https://img.shields.io/github/v/release/KazeFreeze/PandaBrew?style=for-the-badge&logo=github)](https://github.com/KazeFreeze/PandaBrew/releases)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/KazeFreeze/PandaBrew/build-and-release.yml?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/KazeFreeze/PandaBrew/actions/workflows/build-and-release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
 </div>
