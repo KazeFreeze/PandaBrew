@@ -21,9 +21,6 @@ class UIComponents:
         Creates the main layout of the application, which contains the notebook
         and the final control/status bar section.
         """
-        # The notebook is created in app.py and packed there.
-        # This function creates the controls BELOW the notebook.
-
         control_container = ttkb.Frame(self.app.root, padding=(10, 10))
         control_container.pack(fill="x", side="bottom")
 
@@ -36,23 +33,16 @@ class UIComponents:
         main_container = ttkb.Frame(parent_tab_frame, padding=(5, 5))
         main_container.pack(fill="both", expand=True)
 
-        # --- Top settings section ---
         header_frame = ttkb.LabelFrame(
-            main_container,
-            text="Directory & Options",
-            padding=15,
+            main_container, text="Directory & Options", padding=15
         )
         header_frame.pack(fill="x", pady=(0, 10))
 
         self.create_path_selection(header_frame, tab_data)
-        # Options are now global but placed here for UI consistency
         self.create_options_section(header_frame)
 
-        # --- Tree view section ---
         tree_frame = ttkb.LabelFrame(
-            main_container,
-            text="Project Structure",
-            padding=15,
+            main_container, text="Project Structure", padding=15
         )
         tree_frame.pack(fill="both", expand=True)
         self.create_tree_view(tree_frame, tab_data)
@@ -79,9 +69,7 @@ class UIComponents:
         source_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
         ttkb.Button(
-            source_input_frame,
-            text="Browse",
-            command=self.app.browse_source,  # This now correctly targets the active tab
+            source_input_frame, text="Browse", command=self.app.browse_source
         ).pack(side="right")
 
     def create_options_section(self, parent):
@@ -92,10 +80,8 @@ class UIComponents:
         options_frame.pack(fill="x", expand=True, pady=(10, 0))
         options_frame.grid_columnconfigure(2, weight=1)
 
-        # --- Selection Mode ---
         mode_frame = ttkb.Frame(options_frame)
         mode_frame.grid(row=0, column=0, padx=(0, 30), sticky="w")
-
         ttkb.Label(
             mode_frame, text="Selection Mode:", font=("Segoe UI", 9, "bold")
         ).pack(anchor="w")
@@ -114,7 +100,6 @@ class UIComponents:
             value=False,
         ).pack(side="left")
 
-        # --- Output Content ---
         output_options_frame = ttkb.Frame(options_frame)
         output_options_frame.grid(row=0, column=1, padx=(0, 30), sticky="w")
         ttkb.Label(
@@ -126,7 +111,6 @@ class UIComponents:
             content_frame, text="Filenames only", variable=self.app.filenames_only
         ).pack(anchor="w")
 
-        # --- Output File ---
         output_section = ttkb.Frame(options_frame)
         output_section.grid(row=0, column=2, sticky="ew")
         ttkb.Label(
@@ -149,7 +133,6 @@ class UIComponents:
         tree_container = ttkb.Frame(parent)
         tree_container.pack(fill="both", expand=True)
 
-        # Store canvas and scrollable_frame in tab_data for access
         canvas = tk.Canvas(
             tree_container, highlightthickness=0, bg=self.app.root.style.colors.bg
         )
@@ -170,18 +153,11 @@ class UIComponents:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        canvas.bind_all(
-            "<MouseWheel>",
-            lambda e: self.app.root.nametowidget(e.widget).yview_scroll(
-                int(-1 * (e.delta / 120)), "units"
-            ),
-        )
+        # NOTE: The mousewheel binding is now handled globally in app.py for robustness.
 
-        # --- Tree Controls (Select/Deselect/Refresh) ---
         tree_controls = ttkb.Frame(parent)
         tree_controls.pack(fill="x", pady=(10, 0))
 
-        # We need to lambda the tab_data's tree_view_manager
         ttkb.Button(
             tree_controls,
             text="Select All",
@@ -203,15 +179,12 @@ class UIComponents:
 
     def create_control_buttons(self, parent):
         """
-        Creates the main control buttons (Extract, New Tab) and the progress bar.
-        These are global and reside at the bottom of the main window.
+        Creates the main control buttons (Extract) and the progress bar.
         """
         parent.grid_columnconfigure(1, weight=1)
 
-        # --- Left side: Main Actions ---
         left_controls = ttkb.Frame(parent)
         left_controls.grid(row=0, column=0, sticky="w")
-
         extract_btn = ttkb.Button(
             left_controls,
             text="Extract Code",
@@ -220,33 +193,13 @@ class UIComponents:
         )
         extract_btn.pack(side="left", padx=(0, 10))
 
-        # --- Center: Progress Bar & Status ---
         center_controls = ttkb.Frame(parent)
         center_controls.grid(row=0, column=1, sticky="ew", padx=20)
-
         self.app.progress = ttkb.Progressbar(
             center_controls, length=300, mode="determinate"
         )
-        self.app.progress.pack(side="left", padx=(0, 15))
-
+        self.app.progress.pack(side="left", padx=(0, 15), fill="x", expand=True)
         self.app.status_label = ttkb.Label(
             center_controls, text="Ready", font=("Segoe UI", 9)
         )
         self.app.status_label.pack(side="left")
-
-        # --- Right side: Tab Management ---
-        right_controls = ttkb.Frame(parent)
-        right_controls.grid(row=0, column=2, sticky="e")
-
-        ttkb.Button(
-            right_controls,
-            text="New Tab",
-            command=self.app.add_new_tab,
-            bootstyle="primary",
-        ).pack(side="left", padx=(10, 0))
-        ttkb.Button(
-            right_controls,
-            text="Close Tab",
-            command=self.app.close_current_tab,
-            bootstyle="danger-outline",
-        ).pack(side="left", padx=(10, 0))
