@@ -14,7 +14,7 @@ from .ui_components import UIComponents
 
 class ModernCodeExtractorGUI:
     """
-    The main class for the Code Extractor Pro application.
+    The main class for the PandaBrew application.
 
     This class initializes the GUI, manages user interactions, and orchestrates
     the different components of the application with a browser-like tab interface.
@@ -25,7 +25,7 @@ class ModernCodeExtractorGUI:
         Initializes the main application window.
         """
         self.root = root
-        self.root.title("Code Extractor Pro")
+        self.root.title("PandaBrew")
         self.root.geometry("1100x750")
         self.root.minsize(900, 600)
 
@@ -177,11 +177,9 @@ class ModernCodeExtractorGUI:
 
         # Update window title
         if active_tab and active_tab["source_path"].get():
-            self.root.title(
-                f"Code Extractor Pro - {Path(active_tab['source_path'].get()).name}"
-            )
+            self.root.title(f"PandaBrew - {Path(active_tab['source_path'].get()).name}")
         else:
-            self.root.title("Code Extractor Pro")
+            self.root.title("PandaBrew")
 
         # Refresh canvas style to prevent rendering artifacts
         self._refresh_canvas_style_debounced()

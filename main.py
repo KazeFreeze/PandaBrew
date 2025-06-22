@@ -4,7 +4,7 @@ import pywinstyles
 
 if __name__ == "__main__":
     """
-    Main entry point for the Code Extractor Pro application.
+    Main entry point for the PandaBrew application.
     """
     # Use ttkbootstrap Window with the 'darkly' theme
     root = ttkb.Window(themename="darkly")

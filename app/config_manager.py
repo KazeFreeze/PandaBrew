@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from .app import ModernCodeExtractorGUI
 
 
-CONFIG_FILE_NAME = ".code_extractor_pro_config.json"
+CONFIG_FILE_NAME = ".panda_brew_config.json"
 
 
 class ConfigManager:
