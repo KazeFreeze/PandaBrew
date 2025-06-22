@@ -46,7 +46,7 @@ jobs:
       - name: Build executable with PyInstaller
         run: |
           pyinstaller `
-            --name "Code Extractor Pro" `
+            --name "PandaBrew" `
             --onefile `
             --windowed `
             --icon "codeextractor.ico" `
@@ -57,7 +57,7 @@ jobs:
       # The release will contain 'Code-Extractor-Pro-windows.zip'.
       - name: Package executable
         run: |
-          Compress-Archive -Path "dist/Code Extractor Pro.exe" -DestinationPath "Code-Extractor-Pro-windows.zip"
+          Compress-Archive -Path "dist/PandaBrew.exe" -DestinationPath "Code-Extractor-Pro-windows.zip"
 
       # --- 6. Create GitHub Release ---
       # This step creates the release and uploads the zipped executable as an asset.
@@ -68,6 +68,6 @@ jobs:
           files: Code-Extractor-Pro-windows.zip
           name: "Release ${{ github.ref_name }}"
           tag_name: ${{ github.ref_name }}
-          body: "Official release of Code Extractor Pro, version ${{ github.ref_name }}."
+          body: "Official release of PandaBrew, version ${{ github.ref_name }}."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
