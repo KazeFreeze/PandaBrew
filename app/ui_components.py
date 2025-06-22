@@ -218,25 +218,40 @@ class UIComponents:
         self._create_center_controls(parent)
 
     def _create_left_controls(self, parent: ttkb.Frame) -> None:
-        """Creates the 'Extract Code' button."""
+        """Creates the 'Extract Code' and 'Cancel' buttons."""
         left_controls = ttkb.Frame(parent)
         left_controls.grid(row=0, column=0, sticky="w")
-        extract_btn = ttkb.Button(
+
+        # Assign button to the app instance
+        self.app.extract_btn = ttkb.Button(
             left_controls,
             text="Extract Code",
             command=self.app.file_processor.process_files,
             bootstyle="success",
         )
-        extract_btn.pack(side="left", padx=(0, 10))
+        self.app.extract_btn.pack(side="left", padx=(0, 10))
+
+        # Assign cancel button to the app instance
+        self.app.cancel_btn = ttkb.Button(
+            left_controls,
+            text="Cancel",
+            command=self.app.file_processor.cancel_processing,
+            bootstyle="danger",
+        )
+        # The cancel button is hidden by default and managed by the app state
+        self.app.cancel_btn.pack_forget()
 
     def _create_center_controls(self, parent: ttkb.Frame) -> None:
         """Creates the progress bar and status label."""
         center_controls = ttkb.Frame(parent)
         center_controls.grid(row=0, column=1, sticky="ew", padx=20)
+
+        # Assign progress bar and status label to the app instance
         self.app.progress = ttkb.Progressbar(
             center_controls, length=300, mode="determinate"
         )
         self.app.progress.pack(side="left", padx=(0, 15), fill="x", expand=True)
+
         self.app.status_label = ttkb.Label(
             center_controls, text="Ready", font=("Segoe UI", 9)
         )

@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional
 
 from .config_manager import ConfigManager
 from .tree_view_manager import TreeViewManager
-from .file_processor import FileProcessor
+from .threaded_file_processor import ThreadedFileProcessor  # MODIFIED
 from .ui_components import UIComponents
 
 
@@ -31,7 +31,7 @@ class ModernCodeExtractorGUI:
 
         # Core components
         self.config_manager = ConfigManager(self)
-        self.file_processor = FileProcessor(self)
+        self.file_processor = ThreadedFileProcessor(self)  # MODIFIED
         self.ui_components = UIComponents(self)
 
         # App state variables
@@ -42,7 +42,13 @@ class ModernCodeExtractorGUI:
         )
         self.output_path = tk.StringVar(value=self.config.get("last_output", ""))
         self.tabs: Dict[str, Dict[str, Any]] = {}
-        self.notebook: Optional[ttk.Notebook] = None  # Will be created by UIComponents
+        self.notebook: Optional[ttk.Notebook] = None
+
+        # UI Widget references to be populated by UIComponents
+        self.extract_btn: Optional[ttkb.Button] = None
+        self.cancel_btn: Optional[ttkb.Button] = None
+        self.progress: Optional[ttkb.Progressbar] = None
+        self.status_label: Optional[ttkb.Label] = None
 
         # Initialize UI and events
         self.ui_components.create_main_layout()
@@ -66,9 +72,7 @@ class ModernCodeExtractorGUI:
     def add_new_tab(
         self, source_path: Optional[str] = None, select_tab: bool = True
     ) -> str:
-        """
-        Adds a new tab to the notebook.
-        """
+        """Adds a new tab to the notebook."""
         tab_id = str(uuid.uuid4())
         content_frame = ttkb.Frame(self.notebook)
 
@@ -189,7 +193,22 @@ class ModernCodeExtractorGUI:
         if not self.tabs:
             self.add_new_tab()
 
+    def set_ui_processing_state(self, is_processing: bool) -> None:
+        """Toggles the state of UI controls during processing."""
+        if is_processing:
+            if self.extract_btn:
+                self.extract_btn.config(state="disabled")
+            if self.cancel_btn:
+                self.cancel_btn.pack(side="left", padx=(0, 10))
+        else:
+            if self.extract_btn:
+                self.extract_btn.config(state="normal")
+            if self.cancel_btn:
+                self.cancel_btn.pack_forget()
+
     def on_closing(self) -> None:
-        """Saves configuration on exit."""
+        """Saves configuration on exit and cancels any running process."""
+        if self.file_processor.is_processing:
+            self.file_processor.cancel_processing()
         self.config_manager.save_app_state()
         self.root.destroy()
