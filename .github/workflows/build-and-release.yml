@@ -49,7 +49,7 @@ jobs:
             --name "PandaBrew" `
             --onefile `
             --windowed `
-            --icon "codeextractor.ico" `
+            --icon "pandabrew.ico" `
             main.py
 
       # --- 5. Package for Release ---
