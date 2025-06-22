@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+import ttkbootstrap as ttkb
 
 
 class UIComponents:
@@ -20,12 +20,12 @@ class UIComponents:
         """
         Creates the main graphical user interface for the application.
         """
-        main_container = ttk.Frame(self.app.root, style="Modern.TFrame")
-        main_container.pack(fill="both", expand=True, padx=20, pady=20)
+        main_container = ttkb.Frame(self.app.root, padding=(20, 20))
+        main_container.pack(fill="both", expand=True)
 
-        header_frame = ttk.LabelFrame(
+        header_frame = ttkb.LabelFrame(
             main_container,
-            text="📁 Project Settings",
+            text="Project Settings",
             padding=20,
         )
         header_frame.pack(fill="x", pady=(0, 15))
@@ -33,9 +33,9 @@ class UIComponents:
         self.create_path_selection(header_frame)
         self.create_options_section(header_frame)
 
-        tree_frame = ttk.LabelFrame(
+        tree_frame = ttkb.LabelFrame(
             main_container,
-            text="📂 Project Structure",
+            text="Project Structure",
             padding=15,
         )
         tree_frame.pack(fill="both", expand=True, pady=(0, 15))
@@ -50,17 +50,17 @@ class UIComponents:
         Args:
             parent (tk.Widget): The parent widget for these components.
         """
-        source_section = ttk.Frame(parent)
+        source_section = ttkb.Frame(parent)
         source_section.pack(fill="x", pady=(0, 15))
 
-        ttk.Label(
+        ttkb.Label(
             source_section, text="Source Directory:", font=("Segoe UI", 9, "bold")
         ).pack(anchor="w")
 
-        source_input_frame = ttk.Frame(source_section)
+        source_input_frame = ttkb.Frame(source_section)
         source_input_frame.pack(fill="x", pady=(5, 0))
 
-        source_entry = ttk.Entry(
+        source_entry = ttkb.Entry(
             source_input_frame,
             textvariable=self.app.source_path,
             font=("Segoe UI", 9),
@@ -68,11 +68,10 @@ class UIComponents:
         )
         source_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
-        ttk.Button(
+        ttkb.Button(
             source_input_frame,
-            text="📁 Browse",
+            text="Browse",
             command=self.app.browse_source,
-            style="Modern.TButton",
         ).pack(side="right")
 
         self.create_recent_dropdown(
@@ -85,17 +84,17 @@ class UIComponents:
             ),
         )
 
-        output_section = ttk.Frame(parent)
+        output_section = ttkb.Frame(parent)
         output_section.pack(fill="x", pady=(10, 0))
 
-        ttk.Label(
+        ttkb.Label(
             output_section, text="Output File:", font=("Segoe UI", 9, "bold")
         ).pack(anchor="w")
 
-        output_input_frame = ttk.Frame(output_section)
+        output_input_frame = ttkb.Frame(output_section)
         output_input_frame.pack(fill="x", pady=(5, 0))
 
-        output_entry = ttk.Entry(
+        output_entry = ttkb.Entry(
             output_input_frame,
             textvariable=self.app.output_path,
             font=("Segoe UI", 9),
@@ -103,11 +102,10 @@ class UIComponents:
         )
         output_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
-        ttk.Button(
+        ttkb.Button(
             output_input_frame,
-            text="💾 Save As",
+            text="Save As",
             command=self.app.browse_output,
-            style="Modern.TButton",
         ).pack(side="right")
 
         self.create_recent_dropdown(
@@ -120,15 +118,9 @@ class UIComponents:
     def create_recent_dropdown(self, parent, entry_widget, config_key, command):
         """
         Creates a dropdown menu for recently used paths.
-
-        Args:
-            parent (tk.Widget): The parent widget for the dropdown button.
-            entry_widget (tk.Widget): The entry widget associated with this dropdown.
-            config_key (str): The key in the config dictionary for recent paths.
-            command (callable): The function to execute when a path is selected.
         """
         if self.app.config.get(config_key):
-            dropdown_btn = ttk.Button(
+            dropdown_btn = ttkb.Button(
                 parent,
                 text="▼",
                 width=3,
@@ -141,11 +133,6 @@ class UIComponents:
     def show_recent_menu(self, button, config_key, command):
         """
         Displays the menu of recent paths.
-
-        Args:
-            button (tk.Widget): The button that was clicked to show the menu.
-            config_key (str): The key in the config dictionary for recent paths.
-            command (callable): The function to execute when a path is selected.
         """
         menu = tk.Menu(self.app.root, tearoff=0)
         for path in reversed(self.app.config.get(config_key, [])):
@@ -158,68 +145,63 @@ class UIComponents:
     def create_options_section(self, parent):
         """
         Creates the options section with include/exclude and other settings.
-
-        Args:
-            parent (tk.Widget): The parent widget for this section.
         """
-        options_frame = ttk.LabelFrame(parent, text="⚙️ Options", padding=10)
+        options_frame = ttkb.LabelFrame(parent, text="Options", padding=10)
         options_frame.pack(fill="x", pady=(15, 0))
 
-        mode_frame = ttk.Frame(options_frame)
+        mode_frame = ttkb.Frame(options_frame)
         mode_frame.pack(fill="x", pady=(0, 10))
 
-        ttk.Label(
+        ttkb.Label(
             mode_frame, text="Selection Mode:", font=("Segoe UI", 9, "bold")
         ).pack(anchor="w")
 
-        radio_frame = ttk.Frame(mode_frame)
+        radio_frame = ttkb.Frame(mode_frame)
         radio_frame.pack(fill="x", pady=(5, 0))
 
-        ttk.Radiobutton(
+        ttkb.Radiobutton(
             radio_frame,
-            text="✅ Include checked items",
+            text="Include checked items",
             variable=self.app.include_mode,
             value=True,
         ).pack(side="left", padx=(0, 20))
-        ttk.Radiobutton(
+        ttkb.Radiobutton(
             radio_frame,
-            text="❌ Exclude checked items",
+            text="Exclude checked items",
             variable=self.app.include_mode,
             value=False,
         ).pack(side="left")
 
-        output_options_frame = ttk.Frame(options_frame)
+        output_options_frame = ttkb.Frame(options_frame)
         output_options_frame.pack(fill="x")
 
-        ttk.Label(
+        ttkb.Label(
             output_options_frame, text="Output Content:", font=("Segoe UI", 9, "bold")
         ).pack(anchor="w")
 
-        content_frame = ttk.Frame(output_options_frame)
+        content_frame = ttkb.Frame(output_options_frame)
         content_frame.pack(fill="x", pady=(5, 0))
 
-        ttk.Checkbutton(
+        ttkb.Checkbutton(
             content_frame,
-            text="📝 Filenames only (no file content)",
+            text="Filenames only (no file content)",
             variable=self.app.filenames_only,
         ).pack(anchor="w")
 
     def create_tree_view(self, parent):
         """
         Creates the tree view area with a scrollable canvas.
-
-        Args:
-            parent (tk.Widget): The parent widget for the tree view.
         """
-        tree_container = ttk.Frame(parent)
+        tree_container = ttkb.Frame(parent)
         tree_container.pack(fill="both", expand=True)
 
-        self.app.canvas = tk.Canvas(tree_container, bg="white", highlightthickness=0)
+        self.app.canvas = tk.Canvas(tree_container, highlightthickness=0)
+        self.app.canvas.configure(bg=self.app.root.style.colors.bg)
 
-        scrollbar = ttk.Scrollbar(
+        scrollbar = ttkb.Scrollbar(
             tree_container, orient="vertical", command=self.app.canvas.yview
         )
-        self.app.scrollable_frame = ttk.Frame(self.app.canvas)
+        self.app.scrollable_frame = ttkb.Frame(self.app.canvas)
 
         self.app.scrollable_frame.bind(
             "<Configure>",
@@ -236,68 +218,60 @@ class UIComponents:
         self.app.canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        self.app.canvas.bind_all(
-            "<MouseWheel>",
-            lambda event: self.app.canvas.yview_scroll(
-                int(-1 * (event.delta / 120)), "units"
-            ),
-        )
-        self.app.canvas.bind_all(
-            "<Shift-MouseWheel>",
-            lambda event: self.app.canvas.xview_scroll(
-                int(-1 * (event.delta / 120)), "units"
-            ),
-        )
+        def _on_mousewheel(event):
+            self.app.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
-        tree_controls = ttk.Frame(parent)
+        self.app.canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        tree_controls = ttkb.Frame(parent)
         tree_controls.pack(fill="x", pady=(10, 0))
 
-        ttk.Button(
+        ttkb.Button(
             tree_controls,
-            text="✅ Select All",
+            text="Select All",
             command=self.app.tree_view_manager.select_all,
+            bootstyle="info-outline",
         ).pack(side="left", padx=(0, 10))
-        ttk.Button(
+        ttkb.Button(
             tree_controls,
-            text="❌ Deselect All",
+            text="Deselect All",
             command=self.app.tree_view_manager.deselect_all,
+            bootstyle="info-outline",
         ).pack(side="left", padx=(0, 10))
-        ttk.Button(
+        ttkb.Button(
             tree_controls,
-            text="🔄 Refresh",
+            text="Refresh",
             command=self.app.tree_view_manager.refresh_tree,
+            bootstyle="info-outline",
         ).pack(side="left")
 
     def create_control_buttons(self, parent):
         """
         Creates the main control buttons like 'Extract' and the progress bar.
-
-        Args:
-            parent (tk.Widget): The parent widget for these controls.
         """
-        control_frame = ttk.Frame(parent)
+        control_frame = ttkb.Frame(parent)
         control_frame.pack(fill="x")
 
-        left_controls = ttk.Frame(control_frame)
+        left_controls = ttkb.Frame(control_frame)
         left_controls.pack(side="left")
 
-        extract_btn = ttk.Button(
+        extract_btn = ttkb.Button(
             left_controls,
-            text="🚀 Extract Code",
+            text="Extract Code",
             command=self.app.file_processor.process_files,
-            style="Success.TButton",
+            bootstyle="success",
         )
         extract_btn.pack(side="left", padx=(0, 20))
 
-        center_controls = ttk.Frame(control_frame)
+        center_controls = ttkb.Frame(control_frame)
         center_controls.pack(side="left", fill="x", expand=True)
 
-        self.app.progress = ttk.Progressbar(
+        self.app.progress = ttkb.Progressbar(
             center_controls, length=300, mode="determinate"
         )
         self.app.progress.pack(side="left", padx=(0, 15))
 
-        self.app.status_label = ttk.Label(
+        self.app.status_label = ttkb.Label(
             center_controls, text="Ready", font=("Segoe UI", 9)
         )
         self.app.status_label.pack(side="left")
