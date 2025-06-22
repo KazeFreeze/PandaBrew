@@ -1,7 +1,7 @@
 import json
 import hashlib
 from pathlib import Path
-from typing import Dict, Any, TYPE_CHECKING
+from typing import Dict, Any, TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .app import ModernCodeExtractorGUI
@@ -37,6 +37,7 @@ class ConfigManager:
                     # Ensure essential keys exist
                     config.setdefault("selections", {})
                     config.setdefault("open_tabs", [])
+                    config.setdefault("active_tab_source", None)
                     return config
             else:
                 return self.get_default_config()
@@ -53,6 +54,7 @@ class ConfigManager:
             "selections": {},
             "include_mode": True,
             "filenames_only": False,
+            "active_tab_source": None,
         }
 
     def save_app_state(self) -> None:
@@ -61,12 +63,10 @@ class ConfigManager:
         This includes all open tab paths, their output paths, and selections.
         """
         try:
-            # Save selections for all open tabs first
             for tab_data in self.app.tabs.values():
                 if tab_data["source_path"].get():
                     self.save_selections(tab_data)
 
-            # Create the list of open tab info objects
             open_tabs_info = [
                 {
                     "source": t["source_path"].get(),
@@ -76,7 +76,12 @@ class ConfigManager:
                 if t["source_path"].get()
             ]
 
-            # Limit to the last 10 tabs to keep config clean
+            # --- FIX: Get the source path of the active tab to save it ---
+            active_tab = self.app.get_active_tab()
+            active_tab_source: Optional[str] = None
+            if active_tab and active_tab["source_path"].get():
+                active_tab_source = active_tab["source_path"].get()
+
             recent_tabs_info = open_tabs_info[-10:]
 
             config_to_save = {
@@ -84,6 +89,7 @@ class ConfigManager:
                 "selections": self.app.config.get("selections", {}),
                 "include_mode": self.app.include_mode.get(),
                 "filenames_only": self.app.filenames_only.get(),
+                "active_tab_source": active_tab_source,
             }
 
             with self.config_file.open("w") as f:
@@ -95,7 +101,6 @@ class ConfigManager:
     def save_selections(self, tab_data: Dict[str, Any]) -> None:
         """
         Saves the current checked paths for a given tab's source directory.
-        The paths are stored relative to the source directory root.
         """
         source_path_str = tab_data["source_path"].get()
         if not source_path_str:
@@ -116,8 +121,7 @@ class ConfigManager:
 
     def load_selections(self, tab_data: Dict[str, Any]) -> None:
         """
-        Loads the saved checked paths for a given tab's source directory
-        and populates the TreeViewManager's checked_paths set.
+        Loads the saved checked paths for a given tab's source directory.
         """
         source_path_str = tab_data["source_path"].get()
         if not source_path_str:

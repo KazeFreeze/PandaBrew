@@ -46,6 +46,12 @@ class ModernCodeExtractorGUI:
         self.tabs: Dict[str, Dict[str, Any]] = {}
         self.notebook: Optional[ttk.Notebook] = None
 
+        # --- FIX IMPLEMENTATION START ---
+        # Cache for background color and debounce ID for canvas refresh
+        self._bg_color_cache: Optional[str] = None
+        self._after_id: Optional[str] = None
+        # --- FIX IMPLEMENTATION END ---
+
         # UI Widget references to be populated by UIComponents
         self.extract_btn: Optional[ttkb.Button] = None
         self.cancel_btn: Optional[ttkb.Button] = None
@@ -56,21 +62,12 @@ class ModernCodeExtractorGUI:
         self.ui_components.create_main_layout()
         self.setup_event_bindings()
         self.load_tabs_from_config()
-        self.on_tab_change()  # Set initial title
+        self.on_tab_change()  # Set initial title and canvas style
 
     def setup_event_bindings(self) -> None:
         """Centralized place to set up all major event bindings."""
         if self.notebook:
             self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
-
-            def _on_mousewheel(event: tk.Event) -> None:
-                active_tab = self.get_active_tab()
-                if active_tab and active_tab.get("canvas"):
-                    active_tab["canvas"].yview_scroll(
-                        int(-1 * (event.delta / 120)), "units"
-                    )
-
-            self.notebook.bind("<MouseWheel>", _on_mousewheel)
 
     def add_new_tab(
         self,
@@ -84,7 +81,6 @@ class ModernCodeExtractorGUI:
 
         tab_name = Path(source_path).name if source_path else "New Tab"
         if not self.notebook:
-            # This should not happen if create_main_layout is called first
             print("Error: Notebook not initialized.")
             return ""
 
@@ -146,9 +142,6 @@ class ModernCodeExtractorGUI:
             current_tab_index = self.notebook.index(self.notebook.select())
             self.close_tab_by_index(current_tab_index)
         except tk.TclError:
-            # This can happen if the last tab is closed and a new one is added,
-            # but the event triggers on the old (now non-existent) tab.
-            # It's safe to ignore in this context.
             pass
 
     def get_active_tab(self) -> Optional[Dict[str, Any]]:
@@ -164,13 +157,25 @@ class ModernCodeExtractorGUI:
                 if tab_data["frame"] == selected_widget:
                     return tab_data
         except (KeyError, tk.TclError):
-            # This can happen during tab closing, it's a transient state.
             return None
         return None
 
     def on_tab_change(self, event: Optional[tk.Event] = None) -> None:
-        """Updates window title when tab changes."""
+        """Handles events when the active tab changes."""
+        # --- FIX IMPLEMENTATION START ---
+        # Centralized method to handle all post-tab-change UI updates
+        self.refresh_active_tab_ui()
+        # --- FIX IMPLEMENTATION END ---
+
+    # --- FIX IMPLEMENTATION START ---
+    def refresh_active_tab_ui(self) -> None:
+        """
+        Updates the UI based on the currently active tab. This includes the
+        window title and refreshing the canvas style to prevent artifacts.
+        """
         active_tab = self.get_active_tab()
+
+        # Update window title
         if active_tab and active_tab["source_path"].get():
             self.root.title(
                 f"Code Extractor Pro - {Path(active_tab['source_path'].get()).name}"
@@ -178,11 +183,44 @@ class ModernCodeExtractorGUI:
         else:
             self.root.title("Code Extractor Pro")
 
+        # Refresh canvas style to prevent rendering artifacts
+        self._refresh_canvas_style_debounced()
+
+    def _refresh_canvas_style_debounced(self) -> None:
+        """
+        Refreshes the active canvas's background color after a short delay.
+        This is debounced to prevent rapid, unnecessary updates when switching
+        tabs quickly. This helps fix rendering glitches with the mica style.
+        """
+        if self._after_id:
+            self.root.after_cancel(self._after_id)
+
+        self._after_id = self.root.after(15, self._perform_canvas_refresh)
+
+    def _perform_canvas_refresh(self) -> None:
+        """The actual logic to refresh the canvas style."""
+        self._after_id = None
+        active_tab = self.get_active_tab()
+        if not (active_tab and active_tab.get("canvas")):
+            return
+
+        canvas = active_tab["canvas"]
+
+        if self._bg_color_cache is None:
+            self._bg_color_cache = self.style.colors.get("bg") or "#2c3e50"
+
+        try:
+            canvas.update_idletasks()
+            canvas.configure(bg=self._bg_color_cache)
+        except tk.TclError:
+            pass  # Widget might have been destroyed
+
+    # --- FIX IMPLEMENTATION END ---
+
     def browse_source(self) -> None:
         """Opens a dialog to select the source directory for the active tab."""
         active_tab = self.get_active_tab()
         if not active_tab:
-            # Add a new tab if none exist
             self.add_new_tab(select_tab=True)
             active_tab = self.get_active_tab()
             if not active_tab:
@@ -193,7 +231,6 @@ class ModernCodeExtractorGUI:
 
         folder = filedialog.askdirectory(title="Select Source Directory")
         if folder:
-            # Check if this folder is already open in another tab
             for tdata in self.tabs.values():
                 if tdata["source_path"].get() == folder:
                     if self.notebook:
@@ -227,9 +264,10 @@ class ModernCodeExtractorGUI:
     def load_tabs_from_config(self) -> None:
         """Loads the tabs that were open during the last session."""
         open_tabs = self.config.get("open_tabs", [])
+        active_tab_source = self.config.get("active_tab_source")
+
         if open_tabs and isinstance(open_tabs, list):
-            # Reverse to maintain order when adding
-            for i, tab_info in enumerate(reversed(open_tabs)):
+            for tab_info in open_tabs:
                 if isinstance(tab_info, dict):
                     source = tab_info.get("source")
                     output = tab_info.get("output")
@@ -237,12 +275,20 @@ class ModernCodeExtractorGUI:
                         self.add_new_tab(
                             source_path=source,
                             output_path=output,
-                            select_tab=(i == len(open_tabs) - 1),
+                            select_tab=False,
                         )
 
-        # Ensure at least one tab is present on startup
+            if active_tab_source:
+                for tab_data in self.tabs.values():
+                    if tab_data["source_path"].get() == active_tab_source:
+                        if self.notebook:
+                            self.notebook.select(tab_data["frame"])
+                            break
+
         if not self.tabs:
             self.add_new_tab()
+
+        self.refresh_active_tab_ui()
 
     def set_ui_processing_state(self, is_processing: bool) -> None:
         """Toggles the state of UI controls during processing."""
@@ -260,7 +306,6 @@ class ModernCodeExtractorGUI:
     def on_closing(self) -> None:
         """
         Saves configuration on exit and cancels any running process.
-        Handles graceful shutdown of the background thread.
         """
         if self.file_processor.is_processing:
             if (
@@ -272,11 +317,9 @@ class ModernCodeExtractorGUI:
                 )
                 == "Cancel"
             ):
-                return  # User cancelled the exit
+                return
 
             self.file_processor.cancel_processing()
-
-            # Optionally, wait a moment for the thread to recognize the cancel event
             if self.file_processor.processing_thread:
                 self.file_processor.processing_thread.join(timeout=0.5)
 
