@@ -6,125 +6,125 @@ from pathlib import Path
 class ConfigManager:
     """
     Manages loading and saving of the application's configuration,
-    including recent paths and user selections.
+    now supporting multiple open tabs and persistent selections.
     """
 
     def __init__(self, app_instance):
         """
         Initializes the ConfigManager.
-
-        Args:
-            app_instance: An instance of the main application class.
         """
         self.app = app_instance
-        self.config_file = Path.home() / ".code_extractor_config.json"
+        # Using a new config file name to avoid conflicts with old versions.
+        self.config_file = Path.home() / ".code_extractor_pro_config.json"
 
     def load_config(self):
         """
         Loads the configuration from a JSON file.
-        If the file doesn't exist, it creates a default configuration.
-
-        Returns:
-            dict: The loaded or default configuration.
+        If the file doesn't exist or is invalid, it creates a default configuration.
         """
         try:
             if self.config_file.exists():
                 with open(self.config_file, "r") as f:
                     config = json.load(f)
+                    # Basic validation to see if the loaded config is a dict
+                    if not isinstance(config, dict):
+                        return self.get_default_config()
+
+                    # Ensure essential keys exist
                     if "selections" not in config:
                         config["selections"] = {}
-                    for key in ["recent_sources", "recent_outputs"]:
-                        if key in config:
-                            config[key] = config[key][-10:]
+                    if "open_tabs" not in config:
+                        config["open_tabs"] = []
                     return config
             else:
                 return self.get_default_config()
-        except Exception as e:
-            print(f"Error loading config: {e}")
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Error loading config, resetting to default: {e}")
             return self.get_default_config()
 
     def get_default_config(self):
         """
         Returns a dictionary with the default configuration settings.
-
-        Returns:
-            dict: The default configuration.
         """
         return {
-            "last_source": "",
+            "open_tabs": [],
             "last_output": "",
-            "recent_sources": [],
-            "recent_outputs": [],
             "selections": {},
+            "include_mode": True,
+            "filenames_only": False,
         }
 
     def save_config(self):
         """
         Saves the current configuration to the JSON file.
-        This includes the last used paths and current selections.
+        This includes all open tab paths and current selections for all tabs.
         """
         try:
-            self.app.config["last_source"] = self.app.source_path.get()
-            self.app.config["last_output"] = self.app.output_path.get()
+            # First, ensure selections for all open tabs are up-to-date in self.app.config
+            for tab_data in self.app.tabs.values():
+                if tab_data["source_path"].get():
+                    self.save_selections(tab_data)
 
-            if self.app.source_path.get():
-                self.save_selections()
+            # FIX: Explicitly build the list of tab paths to ensure it's correct.
+            tab_paths = []
+            for t in self.app.tabs.values():
+                path = t["source_path"].get()
+                if path and isinstance(path, str):
+                    tab_paths.append(path)
 
-            for path_var, config_key in [
-                (self.app.source_path, "recent_sources"),
-                (self.app.output_path, "recent_outputs"),
-            ]:
-                if path_var.get():
-                    if config_key not in self.app.config:
-                        self.app.config[config_key] = []
-                    if path_var.get() in self.app.config[config_key]:
-                        self.app.config[config_key].remove(path_var.get())
-                    self.app.config[config_key].append(path_var.get())
-                    self.app.config[config_key] = self.app.config[config_key][-10:]
+            # Assemble the complete configuration dictionary to be saved.
+            config_to_save = {
+                "open_tabs": tab_paths,
+                "last_output": self.app.output_path.get(),
+                "selections": self.app.config.get("selections", {}),
+                "include_mode": self.app.include_mode.get(),
+                "filenames_only": self.app.filenames_only.get(),
+            }
 
             with open(self.config_file, "w") as f:
-                json.dump(self.app.config, f, indent=2)
+                json.dump(config_to_save, f, indent=2)
         except Exception as e:
             print(f"Error saving config: {e}")
 
-    def save_selections(self):
+    def save_selections(self, tab_data):
         """
-        Saves the current state of checkboxes in the tree view for the current source directory.
+        Saves the current state of checkboxes in the tree view for a given tab's source directory.
         """
-        if not self.app.source_path.get():
+        source_path_str = tab_data["source_path"].get()
+        if not source_path_str:
             return
 
-        source_hash = hashlib.md5(self.app.source_path.get().encode()).hexdigest()
+        source_hash = hashlib.md5(source_path_str.encode()).hexdigest()
         selections = {}
 
-        for path_str, tree_item in self.app.tree_view_manager.tree_items.items():
+        for path_str, tree_item in tab_data["tree_view_manager"].tree_items.items():
             if tree_item.checked.get():
                 try:
-                    rel_path = str(
-                        Path(path_str).relative_to(self.app.source_path.get())
-                    )
+                    rel_path = str(Path(path_str).relative_to(source_path_str))
                     selections[rel_path] = True
                 except ValueError:
                     pass
 
+        if "selections" not in self.app.config:
+            self.app.config["selections"] = {}
         self.app.config["selections"][source_hash] = selections
 
-    def load_selections(self):
+    def load_selections(self, tab_data):
         """
-        Loads and applies the saved checkbox selections for the current source directory.
+        Loads and applies the saved checkbox selections for a given tab's source directory.
         """
-        if not self.app.source_path.get():
+        source_path_str = tab_data["source_path"].get()
+        if not source_path_str:
             return
 
-        source_hash = hashlib.md5(self.app.source_path.get().encode()).hexdigest()
+        source_hash = hashlib.md5(source_path_str.encode()).hexdigest()
         selections = self.app.config.get("selections", {}).get(source_hash, {})
 
+        if not selections:
+            return
+
+        tree_manager = tab_data["tree_view_manager"]
         for rel_path, checked in selections.items():
-            try:
-                full_path = str(Path(self.app.source_path.get()) / rel_path)
-                if full_path in self.app.tree_view_manager.tree_items:
-                    self.app.tree_view_manager.tree_items[full_path].checked.set(
-                        checked
-                    )
-            except Exception:
-                pass
+            full_path = str(Path(source_path_str) / rel_path)
+            if full_path in tree_manager.tree_items:
+                tree_manager.tree_items[full_path].checked.set(checked)
