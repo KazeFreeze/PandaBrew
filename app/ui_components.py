@@ -35,7 +35,7 @@ class UIComponents:
         style.configure("TRadiobutton", font=TERMINAL_FONT)
         style.configure("TEntry", font=TERMINAL_FONT)
 
-        # LabelFrame styling using a brighter 'info' color for the title
+        # LabelFrame styling
         style.configure("TLabelframe", padding=15)
         style.configure(
             "TLabelframe.Label",
@@ -43,7 +43,10 @@ class UIComponents:
             foreground=style.colors.get("info"),
         )
 
-        # Notebook styling for a more integrated look
+        # Ensure TFrame background matches root
+        style.configure("TFrame", background=style.colors.get("bg"))
+
+        # Notebook styling
         style.configure("TNotebook.Tab", font=TERMINAL_FONT_BOLD, padding=[10, 5])
         style.map(
             "TNotebook.Tab",
@@ -59,8 +62,7 @@ class UIComponents:
 
     def create_main_layout(self) -> None:
         """
-        Creates the main layout of the application, including the tab container
-        and the final control/status bar section.
+        Creates the main layout of the application.
         """
         self.app.root.configure(bg=self.app.style.colors.get("bg"))
 
@@ -103,9 +105,7 @@ class UIComponents:
     def create_tab_ui(
         self, parent_tab_frame: ttkb.Frame, tab_data: Dict[str, Any]
     ) -> None:
-        """
-        Creates the UI for a single tab's content area.
-        """
+        """Creates the UI for a single tab's content area."""
         main_container = ttkb.Frame(parent_tab_frame, padding=(5, 5))
         main_container.pack(fill="both", expand=True)
 
@@ -131,8 +131,7 @@ class UIComponents:
         source_input_frame = ttkb.Frame(source_section)
         source_input_frame.pack(fill="x", pady=(5, 0))
         source_entry = ttkb.Entry(
-            source_input_frame,
-            textvariable=tab_data["source_path"],
+            source_input_frame, textvariable=tab_data["source_path"]
         )
         source_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
         ttkb.Button(
@@ -217,12 +216,16 @@ class UIComponents:
 
     def create_tree_view(self, parent: ttkb.Frame, tab_data: Dict[str, Any]) -> None:
         """Creates the scrollable tree view."""
-        tree_container = ttkb.Frame(parent)
+        tree_container = ttkb.Frame(parent, style="TFrame")
         tree_container.pack(fill="both", expand=True)
 
-        # Use a transparent background for the canvas to let the mica show through
+        bg_color = self.app.style.colors.get("bg") or "#2c3e50"
+
         canvas = tk.Canvas(
-            tree_container, highlightthickness=0, bg=self.app.root.style.colors.bg
+            tree_container,
+            highlightthickness=0,
+            bg=bg_color,
+            borderwidth=0,
         )
         tab_data["canvas"] = canvas
 
@@ -232,8 +235,33 @@ class UIComponents:
             command=canvas.yview,
             bootstyle="info-round",
         )
+
         scrollable_frame = ttkb.Frame(canvas, style="TFrame")
         tab_data["scrollable_frame"] = scrollable_frame
+
+        # --- SCROLL WHEEL FIX ---
+        # This approach binds the scroll-activation events directly to the canvas,
+        # which is the widget that fills the entire "Project Structure" area. This
+        # is more reliable than binding to the inner frame.
+        def _on_mousewheel(event: tk.Event):
+            """Scrolls the canvas vertically."""
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def _bind_mousewheel(event: tk.Event):
+            """Binds the mouse wheel event to the scroll function."""
+            # On Windows, just binding to the canvas is enough.
+            # For cross-platform compatibility with Linux, bind_all is more robust.
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        def _unbind_mousewheel(event: tk.Event):
+            """Unbinds the mouse wheel event."""
+            canvas.unbind_all("<MouseWheel>")
+
+        # When the mouse pointer enters the canvas, activate scrolling.
+        canvas.bind("<Enter>", _bind_mousewheel)
+        # When it leaves, deactivate scrolling to avoid interfering with other widgets.
+        canvas.bind("<Leave>", _unbind_mousewheel)
+        # --- END FIX ---
 
         scrollable_frame.bind(
             "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
@@ -268,7 +296,7 @@ class UIComponents:
             tree_controls,
             text="Refresh",
             command=lambda: tab_data["tree_view_manager"].refresh_tree(),
-            bootstyle="info-outline",  # Changed to info-outline for consistency
+            bootstyle="info-outline",
         ).pack(side="left")
 
     def create_control_buttons(self, parent: ttkb.Frame) -> None:
@@ -282,7 +310,6 @@ class UIComponents:
         left_controls = ttkb.Frame(parent)
         left_controls.grid(row=0, column=0, sticky="w")
 
-        # Assign button to the app instance
         self.app.extract_btn = ttkb.Button(
             left_controls,
             text="Extract Code",
@@ -291,14 +318,12 @@ class UIComponents:
         )
         self.app.extract_btn.pack(side="left", padx=(0, 10))
 
-        # Assign cancel button to the app instance
         self.app.cancel_btn = ttkb.Button(
             left_controls,
             text="Cancel",
             command=self.app.file_processor.cancel_processing,
             bootstyle="danger",
         )
-        # The cancel button is hidden by default and managed by the app state
         self.app.cancel_btn.pack_forget()
 
     def _create_center_controls(self, parent: ttkb.Frame) -> None:
@@ -306,7 +331,6 @@ class UIComponents:
         center_controls = ttkb.Frame(parent)
         center_controls.grid(row=0, column=1, sticky="ew", padx=20)
 
-        # Assign progress bar and status label to the app instance
         self.app.progress = ttkb.Progressbar(
             center_controls, length=300, mode="determinate", bootstyle="success-striped"
         )
