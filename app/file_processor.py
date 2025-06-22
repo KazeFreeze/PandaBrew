@@ -15,14 +15,38 @@ class FileProcessor:
         self.app = app_instance
 
     def should_process_path(self, path, selected_paths_set, include_mode):
+        """
+        Determines if a given path should be processed based on the user's
+        selections and the include/exclude mode.
+        """
         path_str = str(path)
-        is_selected = any(
-            path_str == p or path_str.startswith(str(Path(p)) / "")
-            for p in selected_paths_set
-        )
+        is_selected = False
+        for p in selected_paths_set:
+            # Check for exact match
+            if path_str == p:
+                is_selected = True
+                break
+            # Check if the path is inside a selected directory.
+            # We add a trailing separator to the directory path to ensure
+            # we only match full directory names (e.g., to avoid matching
+            # a 'test' folder with a 'testing' folder).
+            try:
+                # Correctly use pathlib to add a separator before converting to string
+                dir_path_with_sep = str(Path(p) / "")
+                if path_str.startswith(dir_path_with_sep):
+                    is_selected = True
+                    break
+            except TypeError:
+                # This can happen if p is not a valid path component, though unlikely here.
+                continue
+
         return is_selected if include_mode else not is_selected
 
     def process_files(self):
+        """
+        Gathers all selected files, generates the project structure and content,
+        and writes it to the specified output file.
+        """
         active_tab = self.app.get_active_tab()
         if not active_tab:
             Messagebox.show_error("Error", "No active tab found.")
@@ -44,18 +68,23 @@ class FileProcessor:
             self.app.root.update_idletasks()
 
             source_path = Path(source)
+            # Get all paths to perform filtering on
             all_paths_in_dir = list(source_path.rglob("*"))
+            # Get the set of user-selected paths from the tree view
             selected_paths = {
                 p for p, item in tree_manager.tree_items.items() if item.checked.get()
             }
             include_mode = self.app.include_mode.get()
 
+            # Filter files based on selection
             files_to_process = [
                 p
                 for p in all_paths_in_dir
                 if p.is_file()
                 and self.should_process_path(p, selected_paths, include_mode)
             ]
+
+            # Determine which directories need to be in the structure tree
             dirs_in_structure = {p.parent for p in files_to_process}
             for p in all_paths_in_dir:
                 if p.is_dir() and self.should_process_path(
@@ -71,6 +100,7 @@ class FileProcessor:
                 self.app.status_label["text"] = "Ready"
                 return
 
+            # Write the final report
             with open(output, "w", encoding="utf-8", errors="ignore") as f:
                 self.write_report_header(f)
                 self.write_project_structure_ascii(
@@ -85,8 +115,6 @@ class FileProcessor:
             self.app.status_label["text"] = (
                 f"Extraction complete. {total_files} files processed."
             )
-
-            # MODIFIED: Improved feedback message
             Messagebox.show_info(
                 "Success",
                 f"Extraction Complete\n\n{total_files} files processed.\n\nOutput saved to:\n{output}",
@@ -102,6 +130,7 @@ class FileProcessor:
             traceback.print_exc()
 
     def write_report_header(self, f):
+        """Writes the header for the output file."""
         mode = "INCLUDE" if self.app.include_mode.get() else "EXCLUDE"
         f.write(f"--- Project Extraction Report ---\n")
         f.write(f"Timestamp: {datetime.datetime.now().isoformat()}\n")
@@ -111,15 +140,26 @@ class FileProcessor:
     def write_project_structure_ascii(
         self, f, source_path, files_to_process, dirs_in_structure
     ):
+        """Writes a classic ASCII tree structure to the output file."""
         f.write("### Project Structure\n\n")
         paths_in_tree = set(files_to_process) | dirs_in_structure
+
+        # Add all parent directories to ensure the tree is complete.
+        # This is done by iterating up from each path until we are outside the source path.
         for p in list(paths_in_tree):
             parent = p.parent
-            while parent != source_path.parent and parent.is_relative_to(
-                source_path, walk_up=True
-            ):
-                paths_in_tree.add(parent)
-                parent = parent.parent
+            try:
+                # This loop continues as long as the parent is a sub-path of the source.
+                # It will throw a ValueError when parent is no longer relative to source_path.
+                while parent.is_relative_to(source_path):
+                    if parent == source_path:
+                        break  # Stop when we reach the source path itself
+                    paths_in_tree.add(parent)
+                    parent = parent.parent
+            except ValueError:
+                # This block is entered when parent is no longer a sub-directory of source_path
+                continue
+
         paths_in_tree.add(source_path)
 
         def build_tree(current_path, prefix=""):
@@ -144,6 +184,7 @@ class FileProcessor:
         f.write("\n")
 
     def write_file_contents(self, f, files_to_process, source_path, total_files):
+        """Writes the contents of each processed file to the output."""
         f.write("### File Contents\n\n")
         for i, path in enumerate(files_to_process):
             try:
@@ -155,6 +196,8 @@ class FileProcessor:
                 except Exception as read_error:
                     f.write(f"[Error reading file: {read_error}]\n")
                 f.write("---\n\n")
+
+                # Update progress bar periodically
                 if (i + 1) % 10 == 0 or (i + 1) == total_files:
                     progress = ((i + 1) / total_files) * 100
                     self.app.progress["value"] = progress
