@@ -1,10 +1,10 @@
-# Code Extractor
+# Code Extractor Pro
 
 A simple, powerful GUI tool for extracting and organizing code from project directories.
 
 ## Overview
 
-Code Extractor is a desktop application that allows you to easily extract all or selected files from your project directory into a single, organized text file. This is particularly useful for:
+Code Extractor Pro is a desktop application that allows you to easily extract all or selected files from your project directory into a single, organized text file. This is particularly useful for:
 
 - Sharing code samples without sending multiple files
 - Creating documentation of your project structure
