@@ -44,24 +44,24 @@ class FileProcessor:
         dialog.title(title)
         dialog.transient(self.app.root)
         dialog.grab_set()
-        
+
         # Make it modal and center it
         dialog.resizable(False, False)
-        
+
         # Set up the dialog content
         main_frame = tk.Frame(dialog, padx=20, pady=20)
         main_frame.pack(fill="both", expand=True)
-        
+
         # Add the message
         message_label = tk.Label(
-            main_frame, 
-            text=message, 
+            main_frame,
+            text=message,
             justify="left",
             font=("Segoe UI", 9),
-            wraplength=400
+            wraplength=400,
         )
         message_label.pack(pady=(0, 20))
-        
+
         # Add OK button
         ok_button = tk.Button(
             main_frame,
@@ -69,30 +69,30 @@ class FileProcessor:
             command=dialog.destroy,
             font=("Segoe UI", 9),
             padx=20,
-            pady=5
+            pady=5,
         )
         ok_button.pack()
         ok_button.focus_set()
-        
+
         # Bind Enter key to close dialog
-        dialog.bind('<Return>', lambda e: dialog.destroy())
-        dialog.bind('<Escape>', lambda e: dialog.destroy())
-        
+        dialog.bind("<Return>", lambda e: dialog.destroy())
+        dialog.bind("<Escape>", lambda e: dialog.destroy())
+
         # Update the dialog to get its size
         dialog.update_idletasks()
-        
+
         # Calculate position to center on parent window
         parent_x = self.app.root.winfo_x()
         parent_y = self.app.root.winfo_y()
         parent_width = self.app.root.winfo_width()
         parent_height = self.app.root.winfo_height()
-        
+
         dialog_width = dialog.winfo_reqwidth()
         dialog_height = dialog.winfo_reqheight()
-        
+
         pos_x = parent_x + (parent_width // 2) - (dialog_width // 2)
         pos_y = parent_y + (parent_height // 2) - (dialog_height // 2)
-        
+
         dialog.geometry(f"{dialog_width}x{dialog_height}+{pos_x}+{pos_y}")
 
     def process_files(self) -> None:
@@ -198,7 +198,7 @@ class FileProcessor:
             self.app.status_label["text"] = (
                 f"Extraction complete. {total_files} files processed."
             )
-            
+
             # Use the custom centered success dialog
             success_message = f"Extraction Complete\n\n{total_files} files processed.\n\nOutput saved to:\n{output}"
             self.show_centered_success_dialog("Success", success_message)
@@ -287,27 +287,51 @@ class FileProcessor:
     def write_file_contents(
         self, f, files_to_process: List[Path], source_path: Path, total_files: int
     ) -> None:
-        """Writes the contents of each processed file to the output."""
+        """Writes the contents of each processed file to the output with per-file progress updates."""
         f.write("### File Contents\n\n")
+
         for i, path in enumerate(files_to_process):
             try:
+                # Update status BEFORE processing the file
+                current_file_num = i + 1
                 rel_path = path.relative_to(source_path)
+                self.app.status_label["text"] = (
+                    f"Processing {current_file_num}/{total_files}: {rel_path.name}"
+                )
+
+                # Update progress bar to show we're about to process this file
+                progress = ((i) / total_files) * 100 if total_files > 0 else 0
+                self.app.progress["value"] = progress
+                self.app.root.update_idletasks()
+
+                # Write the file header
                 f.write(f"--- file: {rel_path} ---\n")
+
+                # Read and write file content
                 try:
                     content = path.read_text(encoding="utf-8", errors="ignore")
                     f.write(content.strip() + "\n")
                 except Exception as read_error:
                     f.write(f"[Error reading file: {read_error}]\n")
+
                 f.write("---\n\n")
 
-                if (i + 1) % 10 == 0 or (i + 1) == total_files:
-                    progress = ((i + 1) / total_files) * 100
-                    self.app.progress["value"] = progress
-                    self.app.status_label["text"] = (
-                        f"Processing {i + 1}/{total_files}..."
-                    )
-                    self.app.root.update_idletasks()
+                # Update progress bar AFTER processing the file
+                progress = (current_file_num / total_files) * 100
+                self.app.progress["value"] = progress
+                self.app.root.update_idletasks()
+
             except Exception as e:
+                # Handle file processing errors
+                current_file_num = i + 1
+                progress = (current_file_num / total_files) * 100
+                self.app.progress["value"] = progress
+
                 f.write(
                     f"--- file: {path.name} ---\n[Error processing file path: {e}]\n---\n\n"
                 )
+
+                self.app.status_label["text"] = (
+                    f"Error processing {current_file_num}/{total_files}: {path.name}"
+                )
+                self.app.root.update_idletasks()
