@@ -17,24 +17,28 @@ class FileProcessor:
         """
         self.app = app_instance
 
-    def should_process_path(self, path):
+    def should_process_path(self, path, selected_paths_set):
         """
-        Determines if a given path should be processed based on the user's selections and the include/exclude mode.
+        Determines if a given path should be processed based on user selections.
+        This is a more optimized version.
+
+        Args:
+            path (Path): The path to check.
+            selected_paths_set (set): A pre-computed set of explicitly checked paths.
+
+        Returns:
+            bool: True if the path should be processed, False otherwise.
         """
         path_str = str(path)
 
-        # Check direct selection
-        if path_str in self.app.tree_view_manager.tree_items:
-            if self.app.tree_view_manager.tree_items[path_str].checked.get():
-                return self.app.include_mode.get()
+        # Check direct selection or if a parent directory was selected
+        if any(path_str.startswith(p) for p in selected_paths_set):
+            is_selected = True
+        else:
+            is_selected = False
 
-        # Check parent selection
-        for parent_path_str, tree_item in self.app.tree_view_manager.tree_items.items():
-            if path_str.startswith(parent_path_str) and path_str != parent_path_str:
-                if tree_item.checked.get():
-                    return self.app.include_mode.get()
-
-        return not self.app.include_mode.get()
+        # Return based on include/exclude mode
+        return is_selected if self.app.include_mode.get() else not is_selected
 
     def process_files(self):
         """
@@ -52,31 +56,45 @@ class FileProcessor:
 
         try:
             self.app.progress["value"] = 0
-            self.app.status_label["text"] = "Processing..."
+            self.app.status_label["text"] = "Gathering files..."
             self.app.root.update()
 
-            all_paths = list(Path(source).rglob("*"))
+            source_path = Path(source)
+            all_paths = list(source_path.rglob("*"))
 
+            # Create a set of selected paths for faster lookups
+            selected_paths = {
+                path_str
+                for path_str, item in self.app.tree_view_manager.tree_items.items()
+                if item.checked.get()
+            }
+
+            # Filter files and directories based on selection
             files_to_process = [
-                p for p in all_paths if p.is_file() and self.should_process_path(p)
+                p
+                for p in all_paths
+                if p.is_file() and self.should_process_path(p, selected_paths)
             ]
-            dirs_to_process = [
-                p for p in all_paths if p.is_dir() and self.should_process_path(p)
-            ]
+
+            # Dirs are needed for the structure, even if empty
+            dirs_in_structure = {p.parent for p in files_to_process}
+            for p in all_paths:
+                if p.is_dir() and self.should_process_path(p, selected_paths):
+                    dirs_in_structure.add(p)
 
             total_files = len(files_to_process)
 
-            if total_files == 0 and not any(dirs_to_process):
+            if total_files == 0 and not dirs_in_structure:
                 Messagebox.show_info(
                     "Info", "No files or directories to process with current selection."
                 )
                 self.app.status_label["text"] = "Ready"
                 return
 
-            with open(output, "w", encoding="utf-8") as f:
+            with open(output, "w", encoding="utf-8", errors="ignore") as f:
                 self.write_report_header(f)
-                self.write_project_structure(
-                    f, Path(source), files_to_process, dirs_to_process
+                self.write_project_structure_ascii(
+                    f, source_path, files_to_process, dirs_in_structure
                 )
                 if not self.app.filenames_only.get():
                     self.write_file_contents(f, files_to_process, source, total_files)
@@ -96,95 +114,91 @@ class FileProcessor:
     def write_report_header(self, f):
         """
         Writes the header section of the output report.
+        The format is changed slightly to be more LLM-friendly.
         """
-        checked_status = "checked" if self.app.include_mode.get() else "unchecked"
-        f.write(f"# Project Extract (-{checked_status})\n\n")
+        mode = "INCLUDE" if self.app.include_mode.get() else "EXCLUDE"
+        f.write(f"--- Project Extraction Report ---\n")
+        f.write(f"Timestamp: {datetime.datetime.now().isoformat()}\n")
+        f.write(f"Selection Mode: {mode} checked items\n")
+        f.write("---\n\n")
 
-    def write_project_structure(
-        self, f, source_path, files_to_process, dirs_to_process
+    def write_project_structure_ascii(
+        self, f, source_path, files_to_process, dirs_in_structure
     ):
         """
-        Writes the project structure tree to the output file using the specified format.
+        Writes the project structure as a clean ASCII tree.
         """
-        f.write("# Structure\n")
+        f.write("### Project Structure\n\n")
 
-        paths_in_structure = set()
+        # Create a set of all paths that should appear in the tree
+        paths_in_tree = set(files_to_process) | dirs_in_structure
+        # Also include all parent directories of the paths in the tree
+        for p in list(paths_in_tree):
+            parent = p.parent
+            while parent != source_path.parent and parent != source_path:
+                paths_in_tree.add(parent)
+                parent = parent.parent
+        paths_in_tree.add(source_path)
 
-        # Add the root source directory
-        paths_in_structure.add(source_path)
+        def build_tree(current_path, prefix=""):
+            # Get children of the current path that are part of the structure
+            try:
+                children = sorted(
+                    [p for p in current_path.iterdir() if p in paths_in_tree],
+                    key=lambda p: (p.is_file(), p.name.lower()),
+                )
+            except (IOError, PermissionError):
+                children = []
 
-        # Add all files to be processed and their parents
-        for p in files_to_process:
-            paths_in_structure.add(p)
-            for parent in p.parents:
-                if parent == source_path:
-                    break
-                paths_in_structure.add(parent)
+            for i, child in enumerate(children):
+                is_last = i == len(children) - 1
+                connector = "└── " if is_last else "├── "
 
-        # Add all directories to be processed and their parents
-        for p in dirs_to_process:
-            paths_in_structure.add(p)
-            for parent in p.parents:
-                if parent == source_path:
-                    break
-                paths_in_structure.add(parent)
+                # Write file or directory entry
+                f.write(f"{prefix}{connector}{child.name}\n")
 
-        def build_tree(path, level=0):
-            # Only process paths that should be in the structure
-            if path not in paths_in_structure and path != source_path:
-                return
+                # If it's a directory, recurse
+                if child.is_dir():
+                    new_prefix = prefix + ("    " if is_last else "│   ")
+                    build_tree(child, new_prefix)
 
-            prefix = "> " * level
-            if path.is_dir():
-                f.write(f"{prefix}> {path.name}\n")
-                try:
-                    # Sort children: directories first, then files, alphabetically
-                    children = sorted(
-                        path.iterdir(), key=lambda p: (p.is_file(), p.name.lower())
-                    )
-                    for child in children:
-                        # Recursive call for children that should be in the structure
-                        if child in paths_in_structure:
-                            build_tree(child, level + 1)
-                except PermissionError:
-                    f.write(f"{prefix}  - [Permission Denied]\n")
-            elif path.is_file():
-                f.write(f"{prefix}- {path.name}\n")
-
-        # Start building the tree from the source path
-        f.write(f"> {source_path.name}\n")
-        children = sorted(
-            source_path.iterdir(), key=lambda p: (p.is_file(), p.name.lower())
-        )
-        for child in children:
-            if child in paths_in_structure:
-                build_tree(child, level=1)
+        # Start building the tree from the root
+        f.write(f"{source_path.name}\n")
+        build_tree(source_path)
         f.write("\n")
 
     def write_file_contents(self, f, files_to_process, source, total_files):
         """
         Writes the contents of each processed file to the report.
         """
-        f.write("# Contents\n\n")
+        f.write("### File Contents\n\n")
 
         for i, path in enumerate(files_to_process):
             try:
                 rel_path = path.relative_to(source)
-                f.write(f"@ {rel_path}\n")
+                f.write(f"--- file: {rel_path} ---\n")
 
                 try:
-                    # Read content without adding markdown code fences
-                    content = path.read_text(encoding="utf-8")
-                    f.write(content.rstrip() + "\n\n")
+                    # Read content, ensuring it ends with a newline
+                    content = path.read_text(encoding="utf-8", errors="ignore")
+                    f.write(content.strip() + "\n")
                 except UnicodeDecodeError:
-                    f.write("[Binary file - content not displayed]\n\n")
+                    f.write("[Binary file - content not displayed]\n")
                 except Exception as read_error:
-                    f.write(f"[Error reading file: {read_error}]\n\n")
+                    f.write(f"[Error reading file: {read_error}]\n")
 
-                progress = ((i + 1) / total_files) * 100
-                self.app.progress["value"] = progress
-                self.app.status_label["text"] = f"Processing {i + 1}/{total_files}..."
-                self.app.root.update()
+                f.write("---\n\n")  # End of file marker
+
+                # Update progress bar less frequently to improve performance
+                if (i + 1) % 10 == 0 or (i + 1) == total_files:
+                    progress = ((i + 1) / total_files) * 100
+                    self.app.progress["value"] = progress
+                    self.app.status_label["text"] = (
+                        f"Processing {i + 1}/{total_files}..."
+                    )
+                    self.app.root.update_idletasks()
 
             except Exception as e:
-                f.write(f"[Error processing file path: {e}]\n\n")
+                f.write(f"--- file: {path.name} ---\n")
+                f.write(f"[Error processing file path: {e}]\n")
+                f.write("---\n\n")
