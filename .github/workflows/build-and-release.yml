@@ -57,10 +57,10 @@ jobs:
 
       # --- 5. Package for Release ---
       # This step zips the final executable for easier distribution.
-      # The release will contain 'Code-Extractor-Pro-windows.zip'.
+      # The release will contain 'PandaBrew-windows.zip'.
       - name: Package executable
         run: |
-          Compress-Archive -Path "dist/PandaBrew.exe" -DestinationPath "Code-Extractor-Pro-windows.zip"
+          Compress-Archive -Path "dist/PandaBrew.exe" -DestinationPath "PandaBrew-windows.zip"
 
       # --- 6. Create GitHub Release ---
       # This step creates the release and uploads the zipped executable as an asset.
@@ -68,7 +68,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: Code-Extractor-Pro-windows.zip
+          files: PandaBrew-windows.zip
           name: "Release ${{ github.ref_name }}"
           tag_name: ${{ github.ref_name }}
           body: "Official release of PandaBrew, version ${{ github.ref_name }}."
