@@ -15,7 +15,7 @@ class ModernCodeExtractorGUI:
     """
     The main class for the Code Extractor Pro application.
     This class initializes the GUI, manages user interactions, and orchestrates
-    the different components of the application, now with a tabbed interface.
+    the different components of the application with a browser-like tab interface.
     """
 
     def __init__(self, root):
@@ -25,41 +25,25 @@ class ModernCodeExtractorGUI:
         self.root = root
         self.root.title("Code Extractor Pro")
         self.root.geometry("1100x750")
-        self.root.minsize(800, 600)
+        self.root.minsize(900, 600)
 
+        # Core components
         self.config_manager = ConfigManager(self)
-        self.config = self.config_manager.load_config()
         self.file_processor = FileProcessor(self)
+        self.ui_components = UIComponents(self)
 
+        # App state variables
+        self.config = self.config_manager.load_config()
         self.include_mode = tk.BooleanVar(value=self.config.get("include_mode", True))
         self.filenames_only = tk.BooleanVar(
             value=self.config.get("filenames_only", False)
         )
         self.output_path = tk.StringVar(value=self.config.get("last_output", ""))
-
-        # --- Tab management ---
         self.tabs = {}
+        self.notebook = None  # Will be created by UIComponents
 
-        # NEW: A frame to contain the notebook and the '+' button for a cleaner layout
-        tab_container = ttkb.Frame(self.root)
-        tab_container.pack(expand=True, fill="both", padx=10, pady=(10, 0))
-
-        self.notebook = ttk.Notebook(tab_container)
-        self.notebook.pack(side="left", expand=True, fill="both")
-
-        # NEW: Add new tab button `+` next to the tabs
-        add_tab_button = ttkb.Button(
-            tab_container,
-            text="+",
-            width=3,
-            command=self.add_new_tab,
-            bootstyle="secondary",
-        )
-        add_tab_button.pack(side="left", anchor="n", padx=(5, 0), pady=2)
-
-        self.ui_components = UIComponents(self)
+        # Initialize UI and events
         self.ui_components.create_main_layout()
-
         self.setup_event_bindings()
         self.load_tabs_from_config()
 
@@ -67,14 +51,7 @@ class ModernCodeExtractorGUI:
         """Centralized place to set up all major event bindings."""
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
 
-        # NEW: Right-click menu for closing tabs
-        self.tab_context_menu = tk.Menu(self.root, tearoff=0)
-        self.tab_context_menu.add_command(
-            label="Close Tab", command=self.close_current_tab
-        )
-        self.notebook.bind("<Button-3>", self.show_tab_context_menu)
-
-        # NEW: Robust mousewheel scrolling that targets the active canvas
+        # Mousewheel scrolling for the tree view in the active tab
         def _on_mousewheel(event):
             active_tab = self.get_active_tab()
             if active_tab and active_tab.get("canvas"):
@@ -82,7 +59,6 @@ class ModernCodeExtractorGUI:
                     int(-1 * (event.delta / 120)), "units"
                 )
 
-        # Bind scrolling to the entire notebook area for better usability
         self.notebook.bind("<MouseWheel>", _on_mousewheel)
 
     def add_new_tab(self, source_path=None, select_tab=True):
@@ -90,13 +66,14 @@ class ModernCodeExtractorGUI:
         Adds a new tab to the notebook.
         """
         tab_id = str(uuid.uuid4())
-        tab_frame = ttkb.Frame(self.notebook)
+        content_frame = ttkb.Frame(self.notebook)
+
         tab_name = Path(source_path).name if source_path else "New Tab"
-        self.notebook.add(tab_frame, text=f" {tab_name} ")  # Add padding to text
+        self.notebook.add(content_frame, text=tab_name)
 
         tab_data = {
             "id": tab_id,
-            "frame": tab_frame,
+            "frame": content_frame,
             "source_path": tk.StringVar(value=source_path or ""),
             "tree_view_manager": TreeViewManager(self, tab_id),
             "scrollable_frame": None,
@@ -104,44 +81,57 @@ class ModernCodeExtractorGUI:
         }
         self.tabs[tab_id] = tab_data
 
-        self.ui_components.create_tab_ui(tab_frame, tab_data)
+        self.ui_components.create_tab_ui(content_frame, tab_data)
 
         if select_tab:
-            self.notebook.select(tab_frame)
+            self.notebook.select(content_frame)
 
         if source_path:
             tab_data["tree_view_manager"].refresh_tree()
 
         return tab_id
 
+    def close_tab_by_index(self, index):
+        """Closes a specific tab using its display index."""
+        try:
+            # Get the widget path of the tab content
+            tab_widget_path = self.notebook.tabs()[index]
+            tab_widget = self.root.nametowidget(tab_widget_path)
+
+            tab_id_to_close = None
+            for tid, tdata in self.tabs.items():
+                if tdata["frame"] == tab_widget:
+                    tab_id_to_close = tid
+                    break
+
+            if tab_id_to_close:
+                tab_data = self.tabs[tab_id_to_close]
+                self.config_manager.save_selections(tab_data)
+                self.notebook.forget(index)  # This removes the tab from view
+                del self.tabs[tab_id_to_close]  # Remove from our data dict
+
+            # If the last tab was closed, create a new empty one
+            if not self.notebook.tabs():
+                self.add_new_tab()
+        except (IndexError, tk.TclError) as e:
+            print(f"Error closing tab at index {index}: {e}")
+
     def close_current_tab(self):
-        """Closes the currently active tab (determined by right-click)."""
+        """Closes the currently active tab."""
         if not self.notebook.tabs():
-            return
+            return  # No tabs to close
 
-        selected_tab_id = self.notebook.select()
-        if not selected_tab_id:
-            return
-
-        selected_tab_widget = self.root.nametowidget(selected_tab_id)
-
-        tab_id_to_remove = None
-        for tid, tdata in self.tabs.items():
-            if tdata["frame"] == selected_tab_widget:
-                tab_id_to_remove = tid
-                break
-
-        if tab_id_to_remove:
-            self.config_manager.save_selections(self.tabs[tab_id_to_remove])
-            self.notebook.forget(selected_tab_widget)
-            del self.tabs[tab_id_to_remove]
-
-        if not self.notebook.tabs():
-            self.add_new_tab()
+        try:
+            # Get the index of the currently selected tab
+            current_tab_index = self.notebook.index(self.notebook.select())
+            self.close_tab_by_index(current_tab_index)
+        except tk.TclError:
+            # This can happen if no tab is selected.
+            print("No tab selected to close.")
 
     def get_active_tab(self):
         """Returns the data dictionary for the currently selected tab."""
-        if not self.notebook.tabs():
+        if not self.notebook or not self.notebook.tabs():
             return None
         try:
             selected_widget = self.root.nametowidget(self.notebook.select())
@@ -152,7 +142,7 @@ class ModernCodeExtractorGUI:
             return None
         return None
 
-    def on_tab_change(self, event):
+    def on_tab_change(self, event=None):
         """Updates window title when tab changes."""
         active_tab = self.get_active_tab()
         if active_tab and active_tab["source_path"].get():
@@ -162,15 +152,6 @@ class ModernCodeExtractorGUI:
         else:
             self.root.title("Code Extractor Pro")
 
-    def show_tab_context_menu(self, event):
-        """Shows a context menu on right-click to close a tab."""
-        try:
-            tab_index = self.notebook.index(f"@{event.x},{event.y}")
-            self.notebook.select(tab_index)
-            self.tab_context_menu.post(event.x_root, event.y_root)
-        except tk.TclError:
-            pass  # Click was not on a tab
-
     def browse_source(self):
         """Opens a dialog to select the source directory for the active tab."""
         active_tab = self.get_active_tab()
@@ -179,13 +160,16 @@ class ModernCodeExtractorGUI:
 
         folder = filedialog.askdirectory(title="Select Source Directory")
         if folder:
+            # Check if this directory is already open in another tab
             for tdata in self.tabs.values():
                 if tdata["source_path"].get() == folder:
                     self.notebook.select(tdata["frame"])
                     return
 
             active_tab["source_path"].set(folder)
-            self.notebook.tab(active_tab["frame"], text=f" {Path(folder).name} ")
+            tab_name = Path(folder).name
+            # Update the tab's text
+            self.notebook.tab(active_tab["frame"], text=tab_name)
             self.on_tab_change(None)
             active_tab["tree_view_manager"].refresh_tree()
 

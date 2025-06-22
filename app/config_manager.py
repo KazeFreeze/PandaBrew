@@ -10,11 +10,7 @@ class ConfigManager:
     """
 
     def __init__(self, app_instance):
-        """
-        Initializes the ConfigManager.
-        """
         self.app = app_instance
-        # Using a new config file name to avoid conflicts with old versions.
         self.config_file = Path.home() / ".code_extractor_pro_config.json"
 
     def load_config(self):
@@ -26,11 +22,8 @@ class ConfigManager:
             if self.config_file.exists():
                 with open(self.config_file, "r") as f:
                     config = json.load(f)
-                    # Basic validation to see if the loaded config is a dict
                     if not isinstance(config, dict):
                         return self.get_default_config()
-
-                    # Ensure essential keys exist
                     if "selections" not in config:
                         config["selections"] = {}
                     if "open_tabs" not in config:
@@ -60,21 +53,21 @@ class ConfigManager:
         This includes all open tab paths and current selections for all tabs.
         """
         try:
-            # First, ensure selections for all open tabs are up-to-date in self.app.config
             for tab_data in self.app.tabs.values():
                 if tab_data["source_path"].get():
                     self.save_selections(tab_data)
 
-            # FIX: Explicitly build the list of tab paths to ensure it's correct.
             tab_paths = []
             for t in self.app.tabs.values():
                 path = t["source_path"].get()
                 if path and isinstance(path, str):
                     tab_paths.append(path)
 
-            # Assemble the complete configuration dictionary to be saved.
+            # MODIFIED: Limit saved tabs to the most recent 10
+            recent_tab_paths = tab_paths[-10:]
+
             config_to_save = {
-                "open_tabs": tab_paths,
+                "open_tabs": recent_tab_paths,
                 "last_output": self.app.output_path.get(),
                 "selections": self.app.config.get("selections", {}),
                 "include_mode": self.app.include_mode.get(),
