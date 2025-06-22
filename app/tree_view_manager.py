@@ -4,6 +4,12 @@ from pathlib import Path
 from utils.helpers import format_file_size
 from typing import Optional, Dict, Any, Set
 
+# Define consistent fonts for the terminal theme
+TERMINAL_FONT = ("Cascadia Code", 9)
+TREE_FONT = ("Consolas", 10)
+TREE_FONT_BOLD = ("Consolas", 10, "bold")
+ITALIC_FONT = ("Cascadia Code", 8, "italic")
+
 
 class TreeItem:
     """
@@ -65,7 +71,7 @@ class TreeViewManager:
         item_frame = ttkb.Frame(parent_widget)
         item_frame.pack(fill="x", pady=0, padx=0)
 
-        prefix_label = ttkb.Label(item_frame, text=prefix, font=("Courier", 10))
+        prefix_label = ttkb.Label(item_frame, text=prefix, font=TREE_FONT)
         prefix_label.pack(side="left")
 
         tree_item = TreeItem(path)
@@ -74,9 +80,17 @@ class TreeViewManager:
 
         is_expandable = path.is_dir() and any(path.iterdir())
 
-        expander_text = "+" if is_expandable else " "
+        # Use theme colors for the expander
+        style = self.app.style
+        expander_color = style.colors.get("info")  # Changed to info color
+
+        expander_text = "[+]" if is_expandable else "   "
         expander = ttkb.Label(
-            item_frame, text=expander_text, font=("Courier", 10, "bold"), width=2
+            item_frame,
+            text=expander_text,
+            font=TREE_FONT_BOLD,
+            foreground=expander_color,
+            width=4,
         )
         if is_expandable:
             expander.bind("<Button-1>", lambda e, p=path: self.toggle_expand(p))
@@ -88,6 +102,7 @@ class TreeViewManager:
             item_frame,
             variable=tree_item.checked,
             command=lambda p=path_str, v=tree_item.checked: self.on_item_check(p, v),
+            bootstyle="info-square-toggle",  # Changed to info bootstyle
         )
         chk.pack(side="left")
         self.tree_items[path_str] = tree_item
@@ -95,8 +110,10 @@ class TreeViewManager:
         label_frame = ttkb.Frame(item_frame)
         label_frame.pack(side="left", fill="x", expand=True, padx=4)
 
+        icon = "📁" if path.is_dir() else "📄"
+
         name_label = ttkb.Label(
-            label_frame, text=f" {path.name}", compound="left", font=("Segoe UI", 9)
+            label_frame, text=f"{icon} {path.name}", compound="left", font=TERMINAL_FONT
         )
         name_label.pack(side="left")
 
@@ -106,12 +123,14 @@ class TreeViewManager:
                 ttkb.Label(
                     label_frame,
                     text=f"({size_str})",
-                    font=("Segoe UI", 8, "italic"),
+                    font=ITALIC_FONT,
                     bootstyle="secondary",
                 ).pack(side="left", padx=10)
             except (IOError, PermissionError):
                 pass
-        elif is_expandable:
+
+        if is_expandable:
+            # Make the whole name label clickable to expand
             name_label.bind("<Button-1>", lambda e, p=path: self.toggle_expand(p))
 
     def toggle_expand(self, path: Path):
@@ -124,8 +143,9 @@ class TreeViewManager:
             return
 
         if not tree_item.expanded:
-            tree_item.expander_label.config(text="-")
+            tree_item.expander_label.config(text="[-]")
             if not tree_item.container:
+                # Create container with a small left padding to align children
                 tree_item.container = ttkb.Frame(tree_item.widget.master)
                 tree_item.container.pack(fill="x", after=tree_item.widget)
                 try:
@@ -137,11 +157,12 @@ class TreeViewManager:
                     print(f"Error expanding {path}: {e}")
             tree_item.expanded = True
         else:
-            tree_item.expander_label.config(text="+")
+            tree_item.expander_label.config(text="[+]")
             if tree_item.container:
                 tree_item.container.destroy()
                 tree_item.container = None
             tree_item.expanded = False
+            # Clean up tree_items dict to remove collapsed children
             self.tree_items = {
                 p: i
                 for p, i in self.tree_items.items()
@@ -166,6 +187,7 @@ class TreeViewManager:
         else:
             self.checked_paths.difference_update(paths_to_update)
 
+        # Update the UI for all affected items that are currently visible
         for p_str in paths_to_update:
             if p_str in self.tree_items:
                 self.tree_items[p_str].checked.set(is_checked)
@@ -177,10 +199,13 @@ class TreeViewManager:
             return
 
         source_path = Path(tab_data["source_path"].get())
+
+        # Add all paths recursively to the checked set
         self.checked_paths.add(str(source_path))
         for path in source_path.rglob("*"):
             self.checked_paths.add(str(path))
 
+        # Update all visible items in the UI
         for item in self.tree_items.values():
             item.checked.set(True)
 
@@ -196,7 +221,7 @@ class TreeViewManager:
         based on the filesystem and the persistent checked_paths set.
         """
         tab_data = self.get_tab_data()
-        if not tab_data:
+        if not tab_data or not tab_data.get("scrollable_frame"):
             return
 
         for widget in tab_data["scrollable_frame"].winfo_children():
@@ -211,9 +236,12 @@ class TreeViewManager:
                 self.create_tree_item_widget(
                     source_path, tab_data["scrollable_frame"], "", ""
                 )
+                # Automatically expand the root node
+                self.toggle_expand(source_path)
             else:
                 ttkb.Label(
                     tab_data["scrollable_frame"],
                     text=f"Path not found or is not a directory: {source_path_str}",
                     bootstyle="danger",
-                ).pack()
+                    font=TERMINAL_FONT,
+                ).pack(pady=10, padx=10)

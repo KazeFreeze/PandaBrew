@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional
 
 from .config_manager import ConfigManager
 from .tree_view_manager import TreeViewManager
-from .threaded_file_processor import ThreadedFileProcessor  # MODIFIED
+from .threaded_file_processor import ThreadedFileProcessor
 from .ui_components import UIComponents
 
 
@@ -29,9 +29,12 @@ class ModernCodeExtractorGUI:
         self.root.geometry("1100x750")
         self.root.minsize(900, 600)
 
+        # Initialize ttkbootstrap style object for custom theming
+        self.style = ttkb.Style()
+
         # Core components
         self.config_manager = ConfigManager(self)
-        self.file_processor = ThreadedFileProcessor(self)  # MODIFIED
+        self.file_processor = ThreadedFileProcessor(self)
         self.ui_components = UIComponents(self)
 
         # App state variables
@@ -40,7 +43,6 @@ class ModernCodeExtractorGUI:
         self.filenames_only = tk.BooleanVar(
             value=self.config.get("filenames_only", False)
         )
-        self.output_path = tk.StringVar(value=self.config.get("last_output", ""))
         self.tabs: Dict[str, Dict[str, Any]] = {}
         self.notebook: Optional[ttk.Notebook] = None
 
@@ -54,6 +56,7 @@ class ModernCodeExtractorGUI:
         self.ui_components.create_main_layout()
         self.setup_event_bindings()
         self.load_tabs_from_config()
+        self.on_tab_change()  # Set initial title
 
     def setup_event_bindings(self) -> None:
         """Centralized place to set up all major event bindings."""
@@ -70,19 +73,28 @@ class ModernCodeExtractorGUI:
             self.notebook.bind("<MouseWheel>", _on_mousewheel)
 
     def add_new_tab(
-        self, source_path: Optional[str] = None, select_tab: bool = True
+        self,
+        source_path: Optional[str] = None,
+        output_path: Optional[str] = None,
+        select_tab: bool = True,
     ) -> str:
         """Adds a new tab to the notebook."""
         tab_id = str(uuid.uuid4())
-        content_frame = ttkb.Frame(self.notebook)
+        content_frame = ttkb.Frame(self.notebook, style="primary.TFrame")
 
         tab_name = Path(source_path).name if source_path else "New Tab"
+        if not self.notebook:
+            # This should not happen if create_main_layout is called first
+            print("Error: Notebook not initialized.")
+            return ""
+
         self.notebook.add(content_frame, text=tab_name)
 
         tab_data = {
             "id": tab_id,
             "frame": content_frame,
             "source_path": tk.StringVar(value=source_path or ""),
+            "output_path": tk.StringVar(value=output_path or ""),
             "tree_view_manager": TreeViewManager(self, tab_id),
             "scrollable_frame": None,
             "canvas": None,
@@ -97,10 +109,13 @@ class ModernCodeExtractorGUI:
         if source_path:
             tab_data["tree_view_manager"].refresh_tree()
 
+        self.on_tab_change()
         return tab_id
 
     def close_tab_by_index(self, index: int) -> None:
         """Closes a specific tab using its display index."""
+        if not self.notebook:
+            return
         try:
             tab_widget_path = self.notebook.tabs()[index]
             tab_widget = self.root.nametowidget(tab_widget_path)
@@ -119,6 +134,8 @@ class ModernCodeExtractorGUI:
                 self.add_new_tab()
         except (IndexError, tk.TclError) as e:
             print(f"Error closing tab at index {index}: {e}")
+        finally:
+            self.on_tab_change()
 
     def close_current_tab(self) -> None:
         """Closes the currently active tab."""
@@ -129,18 +146,25 @@ class ModernCodeExtractorGUI:
             current_tab_index = self.notebook.index(self.notebook.select())
             self.close_tab_by_index(current_tab_index)
         except tk.TclError:
-            print("No tab selected to close.")
+            # This can happen if the last tab is closed and a new one is added,
+            # but the event triggers on the old (now non-existent) tab.
+            # It's safe to ignore in this context.
+            pass
 
     def get_active_tab(self) -> Optional[Dict[str, Any]]:
         """Returns the data dictionary for the currently selected tab."""
         if not self.notebook or not self.notebook.tabs():
             return None
         try:
-            selected_widget = self.root.nametowidget(self.notebook.select())
+            selected_widget_path = self.notebook.select()
+            if not selected_widget_path:
+                return None
+            selected_widget = self.root.nametowidget(selected_widget_path)
             for tab_data in self.tabs.values():
                 if tab_data["frame"] == selected_widget:
                     return tab_data
         except (KeyError, tk.TclError):
+            # This can happen during tab closing, it's a transient state.
             return None
         return None
 
@@ -158,38 +182,65 @@ class ModernCodeExtractorGUI:
         """Opens a dialog to select the source directory for the active tab."""
         active_tab = self.get_active_tab()
         if not active_tab:
-            return
+            # Add a new tab if none exist
+            self.add_new_tab(select_tab=True)
+            active_tab = self.get_active_tab()
+            if not active_tab:
+                Messagebox.show_error(
+                    "Error", "Could not create a new tab.", parent=self.root
+                )
+                return
 
         folder = filedialog.askdirectory(title="Select Source Directory")
         if folder:
+            # Check if this folder is already open in another tab
             for tdata in self.tabs.values():
                 if tdata["source_path"].get() == folder:
-                    self.notebook.select(tdata["frame"])
+                    if self.notebook:
+                        self.notebook.select(tdata["frame"])
                     return
 
             active_tab["source_path"].set(folder)
             tab_name = Path(folder).name
-            self.notebook.tab(active_tab["frame"], text=tab_name)
+            if self.notebook:
+                self.notebook.tab(active_tab["frame"], text=tab_name)
             self.on_tab_change()
             active_tab["tree_view_manager"].refresh_tree()
 
     def browse_output(self) -> None:
-        """Opens a dialog to select the output file path."""
+        """Opens a dialog to select the output file path for the active tab."""
+        active_tab = self.get_active_tab()
+        if not active_tab:
+            Messagebox.show_error(
+                "Error", "No active tab to set output path for.", parent=self.root
+            )
+            return
+
         file = filedialog.asksaveasfilename(
             title="Save Extracted Code As",
             defaultextension=".txt",
             filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
         )
         if file:
-            self.output_path.set(file)
+            active_tab["output_path"].set(file)
 
     def load_tabs_from_config(self) -> None:
         """Loads the tabs that were open during the last session."""
         open_tabs = self.config.get("open_tabs", [])
         if open_tabs and isinstance(open_tabs, list):
-            for i, path in enumerate(open_tabs):
-                if isinstance(path, str) and Path(path).exists():
-                    self.add_new_tab(source_path=path, select_tab=(i == 0))
+            # Reverse to maintain order when adding
+            for i, tab_info in enumerate(reversed(open_tabs)):
+                if isinstance(tab_info, dict):
+                    source = tab_info.get("source")
+                    output = tab_info.get("output")
+                    if source and Path(source).exists():
+                        self.add_new_tab(
+                            source_path=source,
+                            output_path=output,
+                            select_tab=(i == len(open_tabs) - 1),
+                        )
+
+        # Ensure at least one tab is present on startup
         if not self.tabs:
             self.add_new_tab()
 
@@ -207,8 +258,27 @@ class ModernCodeExtractorGUI:
                 self.cancel_btn.pack_forget()
 
     def on_closing(self) -> None:
-        """Saves configuration on exit and cancels any running process."""
+        """
+        Saves configuration on exit and cancels any running process.
+        Handles graceful shutdown of the background thread.
+        """
         if self.file_processor.is_processing:
+            if (
+                Messagebox.okcancel(
+                    "Processing in Progress",
+                    "An extraction is currently running. Are you sure you want to quit?\nThe process will be cancelled.",
+                    parent=self.root,
+                    title="Confirm Exit",
+                )
+                == "Cancel"
+            ):
+                return  # User cancelled the exit
+
             self.file_processor.cancel_processing()
+
+            # Optionally, wait a moment for the thread to recognize the cancel event
+            if self.file_processor.processing_thread:
+                self.file_processor.processing_thread.join(timeout=0.5)
+
         self.config_manager.save_app_state()
         self.root.destroy()

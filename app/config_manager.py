@@ -13,7 +13,7 @@ CONFIG_FILE_NAME = ".code_extractor_pro_config.json"
 class ConfigManager:
     """
     Manages loading and saving of the application's configuration,
-    now supporting multiple open tabs and persistent selections.
+    now supporting multiple open tabs with per-tab output paths and persistent selections.
     """
 
     def __init__(self, app_instance: "ModernCodeExtractorGUI"):
@@ -50,7 +50,6 @@ class ConfigManager:
         """
         return {
             "open_tabs": [],
-            "last_output": "",
             "selections": {},
             "include_mode": True,
             "filenames_only": False,
@@ -59,24 +58,29 @@ class ConfigManager:
     def save_app_state(self) -> None:
         """
         Saves the current application state to the JSON file.
-        This includes all open tab paths and current selections for all tabs.
+        This includes all open tab paths, their output paths, and selections.
         """
         try:
+            # Save selections for all open tabs first
             for tab_data in self.app.tabs.values():
                 if tab_data["source_path"].get():
                     self.save_selections(tab_data)
 
-            open_tab_paths = [
-                t["source_path"].get()
+            # Create the list of open tab info objects
+            open_tabs_info = [
+                {
+                    "source": t["source_path"].get(),
+                    "output": t["output_path"].get(),
+                }
                 for t in self.app.tabs.values()
                 if t["source_path"].get()
             ]
 
-            recent_tab_paths = open_tab_paths[-10:]
+            # Limit to the last 10 tabs to keep config clean
+            recent_tabs_info = open_tabs_info[-10:]
 
             config_to_save = {
-                "open_tabs": recent_tab_paths,
-                "last_output": self.app.output_path.get(),
+                "open_tabs": recent_tabs_info,
                 "selections": self.app.config.get("selections", {}),
                 "include_mode": self.app.include_mode.get(),
                 "filenames_only": self.app.filenames_only.get(),
