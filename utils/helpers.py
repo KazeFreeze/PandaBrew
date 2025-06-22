@@ -1,47 +1,6 @@
 from pathlib import Path
 
 
-def get_icon(path):
-    """
-    Returns a text-based icon for a given file or directory path.
-
-    Args:
-        path (Path): The path of the file or directory.
-
-    Returns:
-        str: A text-based icon.
-    """
-    if path.is_dir():
-        return "[D]"
-
-    suffix = path.suffix.lower()
-    icon_map = {
-        ".py": "[Py]",
-        ".js": "[JS]",
-        ".html": "[H]",
-        ".css": "[C]",
-        ".json": "[J]",
-        ".txt": "[T]",
-        ".md": "[M]",
-        ".yml": "[Y]",
-        ".yaml": "[Y]",
-        ".xml": "[X]",
-        ".png": "[I]",
-        ".jpg": "[I]",
-        ".jpeg": "[I]",
-        ".gif": "[I]",
-        ".svg": "[I]",
-        ".zip": "[Z]",
-        ".tar": "[Z]",
-        ".gz": "[Z]",
-        ".rar": "[Z]",
-        ".exe": "[E]",
-        ".bat": "[B]",
-        ".sh": "[S]",
-    }
-    return icon_map.get(suffix, "[-]")
-
-
 def format_file_size(size):
     """
     Formats a file size in bytes into a human-readable string.

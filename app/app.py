@@ -33,7 +33,7 @@ class ModernCodeExtractorGUI:
         self.ui_components = UIComponents(self)
 
         # App state variables
-        self.config = self.config_manager.load_config()
+        self.config = self.config_manager.load_app_state()
         self.include_mode = tk.BooleanVar(value=self.config.get("include_mode", True))
         self.filenames_only = tk.BooleanVar(
             value=self.config.get("filenames_only", False)
@@ -105,8 +105,7 @@ class ModernCodeExtractorGUI:
                     break
 
             if tab_id_to_close:
-                tab_data = self.tabs[tab_id_to_close]
-                self.config_manager.save_selections(tab_data)
+                # No need to save selections here, it's done on closing the app
                 self.notebook.forget(index)  # This removes the tab from view
                 del self.tabs[tab_id_to_close]  # Remove from our data dict
 
@@ -195,5 +194,5 @@ class ModernCodeExtractorGUI:
 
     def on_closing(self):
         """Saves configuration on exit."""
-        self.config_manager.save_config()
+        self.config_manager.save_app_state()
         self.root.destroy()
