@@ -154,7 +154,7 @@ class ThreadedFileProcessor:
                     return
 
                 if p.is_file() and self._should_process_path(
-                    p, selected_paths, include_mode
+                    p, selected_paths, include_mode, source_path
                 ):
                     files_to_process.append(p)
 
@@ -314,15 +314,52 @@ class ThreadedFileProcessor:
                 )
 
     def _should_process_path(
-        self, path: Path, selected_paths_set: Set[str], include_mode: bool
+        self,
+        path: Path,
+        selected_paths_set: Set[str],
+        include_mode: bool,
+        source_path: Path,
     ) -> bool:
-        """Determines if a given path should be processed."""
+        """
+        Determines if a given path should be processed based on the selection mode.
+
+        Args:
+            path: The path to check.
+            selected_paths_set: A set of strings representing the absolute paths of user-checked items.
+            include_mode: A boolean. If True, only checked items are processed.
+                          If False, items are processed unless they or an ancestor are checked.
+            source_path: The root source directory for the current operation.
+
+        Returns:
+            True if the path should be processed, False otherwise.
+        """
         path_str = str(path)
+
+        # --- BUG FIX START ---
+        # In 'exclude' mode, we need to check if the path or any of its parents are in the exclusion list.
+        if not include_mode:
+            # An item should be EXCLUDED if it's in the checked set OR if any of its parent directories are.
+            # Otherwise, it should be INCLUDED. This fixes the bug where new, unchecked files were excluded.
+            current = path
+            while True:
+                if str(current) in selected_paths_set:
+                    return False  # Exclude if the path or a parent is checked
+                if (
+                    current == source_path or current.parent == current
+                ):  # Reached the root
+                    break
+                current = current.parent
+            return True  # Include because neither it nor any parent was in the exclude list
+
+        # Original 'include' mode logic (remains the same)
+        # In 'include' mode, an item should be INCLUDED if it's in the checked set
+        # OR if one of its parent directories is checked.
         is_selected = any(
             path_str == p or path_str.startswith(str(Path(p) / ""))
             for p in selected_paths_set
         )
-        return is_selected if include_mode else not is_selected
+        return is_selected
+        # --- BUG FIX END ---
 
     def _build_structure_paths(
         self,
@@ -392,7 +429,7 @@ class ThreadedFileProcessor:
                 f.write(f"{prefix}{connector}{child.name}")
 
                 is_processed = self._should_process_path(
-                    child, selected_paths, include_mode
+                    child, selected_paths, include_mode, source_path
                 )
 
                 if not is_processed:
