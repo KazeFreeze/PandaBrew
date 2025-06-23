@@ -29,7 +29,7 @@ PandaBrew is a desktop application built with Python and `ttkbootstrap` that pro
 
 ## 📸 Screenshots
 
-_(Add a screenshot of your application here)_
+_(UI)_
 ![PandaBrew Application Screenshot](demo.png)
 
 ## 🚀 Getting Started
