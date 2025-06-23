@@ -80,9 +80,8 @@ class TreeViewManager:
 
         is_expandable = path.is_dir() and any(path.iterdir())
 
-        # Use theme colors for the expander
         style = self.app.style
-        expander_color = style.colors.get("info")  # Changed to info color
+        expander_color = style.colors.get("info")
 
         expander_text = "[+]" if is_expandable else "   "
         expander = ttkb.Label(
@@ -96,21 +95,18 @@ class TreeViewManager:
             expander.bind("<Button-1>", lambda e, p=path: self.toggle_expand(p))
         expander.pack(side="left")
         tree_item.expander_label = expander
-        
-        # --- BUG FIX: Set check state based on self or ancestor being checked ---
-        # This ensures new files inside a checked folder are automatically checked on refresh.
+
         is_initially_checked = any(
             path_str == p or path_str.startswith(str(Path(p) / ""))
             for p in self.checked_paths
         )
         tree_item.checked.set(is_initially_checked)
-        # --- END BUG FIX ---
-        
+
         chk = ttkb.Checkbutton(
             item_frame,
             variable=tree_item.checked,
             command=lambda p=path_str, v=tree_item.checked: self.on_item_check(p, v),
-            bootstyle="info-square-toggle",  # Changed to info bootstyle
+            bootstyle="info-square-toggle",
         )
         chk.pack(side="left")
         self.tree_items[path_str] = tree_item
@@ -128,18 +124,24 @@ class TreeViewManager:
         if path.is_file():
             try:
                 size_str = format_file_size(path.stat().st_size)
-                ttkb.Label(
+                size_label = ttkb.Label(
                     label_frame,
                     text=f"({size_str})",
                     font=ITALIC_FONT,
                     bootstyle="secondary",
-                ).pack(side="left", padx=10)
+                )
+                size_label.pack(side="left", padx=10)
             except (IOError, PermissionError):
                 pass
 
         if is_expandable:
-            # Make the whole name label clickable to expand
             name_label.bind("<Button-1>", lambda e, p=path: self.toggle_expand(p))
+
+        # --- BUG FIX: Apply scroll handler to all newly created widgets ---
+        tab_data = self.get_tab_data()
+        if tab_data and "bind_scroll_handler" in tab_data:
+            tab_data["bind_scroll_handler"](item_frame)
+        # --- END BUG FIX ---
 
     def toggle_expand(self, path: Path):
         """
@@ -153,7 +155,6 @@ class TreeViewManager:
         if not tree_item.expanded:
             tree_item.expander_label.config(text="[-]")
             if not tree_item.container:
-                # Create container with a small left padding to align children
                 tree_item.container = ttkb.Frame(tree_item.widget.master)
                 tree_item.container.pack(fill="x", after=tree_item.widget)
                 try:
@@ -164,13 +165,18 @@ class TreeViewManager:
                 except Exception as e:
                     print(f"Error expanding {path}: {e}")
             tree_item.expanded = True
+
+            # --- BUG FIX: Apply scroll handler to the new container for children ---
+            tab_data = self.get_tab_data()
+            if tab_data and "bind_scroll_handler" in tab_data and tree_item.container:
+                tab_data["bind_scroll_handler"](tree_item.container)
+            # --- END BUG FIX ---
         else:
             tree_item.expander_label.config(text="[+]")
             if tree_item.container:
                 tree_item.container.destroy()
                 tree_item.container = None
             tree_item.expanded = False
-            # Clean up tree_items dict to remove collapsed children
             self.tree_items = {
                 p: i
                 for p, i in self.tree_items.items()
@@ -180,7 +186,6 @@ class TreeViewManager:
     def on_item_check(self, path_str: str, var: tk.BooleanVar):
         """
         Handles the logic when a checkbox is clicked.
-        It updates the canonical checked_paths set and propagates the change to all descendant items.
         """
         is_checked = var.get()
         path = Path(path_str)
@@ -190,14 +195,13 @@ class TreeViewManager:
             try:
                 paths_to_update.update({str(child) for child in path.rglob("*")})
             except (IOError, PermissionError):
-                pass # Ignore directories we can't read
+                pass
 
         if is_checked:
             self.checked_paths.update(paths_to_update)
         else:
             self.checked_paths.difference_update(paths_to_update)
 
-        # Update the UI for all affected items that are currently visible
         for p_str in paths_to_update:
             if p_str in self.tree_items:
                 self.tree_items[p_str].checked.set(is_checked)
@@ -210,12 +214,10 @@ class TreeViewManager:
 
         source_path = Path(tab_data["source_path"].get())
 
-        # Add all paths recursively to the checked set
         self.checked_paths.add(str(source_path))
         for path in source_path.rglob("*"):
             self.checked_paths.add(str(path))
 
-        # Update all visible items in the UI
         for item in self.tree_items.values():
             item.checked.set(True)
 
@@ -227,16 +229,12 @@ class TreeViewManager:
 
     def refresh_tree(self):
         """
-        Refreshes the tree view, clearing the old view and building a new one
-        based on the filesystem and the persistent checked_paths set.
+        Refreshes the tree view, clearing the old view and building a new one.
         """
         tab_data = self.get_tab_data()
         if not tab_data or not tab_data.get("scrollable_frame"):
             return
 
-        # --- FIX: Ensure scroll handler is applied to new widgets ---
-        # This is handled by ui_components passing the handler and create_tree_item_widget applying it.
-        # To make it work, we need to re-bind events on refresh. The fix is now in ui_components.
         for widget in tab_data["scrollable_frame"].winfo_children():
             widget.destroy()
         self.tree_items.clear()
@@ -249,7 +247,6 @@ class TreeViewManager:
                 self.create_tree_item_widget(
                     source_path, tab_data["scrollable_frame"], "", ""
                 )
-                # Automatically expand the root node
                 self.toggle_expand(source_path)
             else:
                 ttkb.Label(

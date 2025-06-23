@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 import ttkbootstrap as ttkb
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Callable
 
 # Define a consistent font for the terminal theme
 TERMINAL_FONT = ("Cascadia Code", 9)
@@ -241,6 +241,7 @@ class UIComponents:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
+        # --- BUG FIX: Bind mouse wheel scrolling to the canvas and inner frame ---
         def _on_mouse_wheel(event):
             """Scrolls the canvas view using the mouse wheel."""
             if event.num == 5 or (hasattr(event, "delta") and event.delta < 0):
@@ -248,10 +249,24 @@ class UIComponents:
             elif event.num == 4 or (hasattr(event, "delta") and event.delta > 0):
                 canvas.yview_scroll(-1, "units")
 
-        for widget in [canvas, scrollable_frame]:
-            widget.bind("<MouseWheel>", _on_mouse_wheel)  # For Windows and macOS
-            widget.bind("<Button-4>", _on_mouse_wheel)  # For Linux
-            widget.bind("<Button-5>", _on_mouse_wheel)  # For Linux
+        # --- BUG FIX: Create a function to recursively bind the scroll wheel event ---
+        def _bind_children(widget: tk.Widget, handler: Callable):
+            """Recursively binds an event handler to a widget and all its children."""
+            widget.bind("<MouseWheel>", handler)
+            widget.bind("<Button-4>", handler)
+            widget.bind("<Button-5>", handler)
+            for child in widget.winfo_children():
+                _bind_children(child, handler)
+
+        # Store the binding function so TreeViewManager can use it for new items.
+        tab_data["bind_scroll_handler"] = lambda w: _bind_children(w, _on_mouse_wheel)
+
+        # Initial binding for the main scrollable frame
+        tab_data["bind_scroll_handler"](scrollable_frame)
+        canvas.bind("<MouseWheel>", _on_mouse_wheel)
+        canvas.bind("<Button-4>", _on_mouse_wheel)
+        canvas.bind("<Button-5>", _on_mouse_wheel)
+        # --- END BUG FIX ---
 
         self._create_tree_control_buttons(parent, tab_data)
 
