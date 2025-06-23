@@ -26,7 +26,6 @@ class UIComponents:
         """Configures custom ttk styles for the terminal theme."""
         style = self.app.style
 
-        # General widget styling
         style.configure(".", font=TERMINAL_FONT)
         style.configure("TLabel", font=TERMINAL_FONT)
         style.configure("TButton", font=TERMINAL_FONT_BOLD)
@@ -35,7 +34,6 @@ class UIComponents:
         style.configure("TRadiobutton", font=TERMINAL_FONT)
         style.configure("TEntry", font=TERMINAL_FONT)
 
-        # LabelFrame styling using a brighter 'info' color for the title
         style.configure("TLabelframe", padding=15)
         style.configure(
             "TLabelframe.Label",
@@ -43,20 +41,17 @@ class UIComponents:
             foreground=style.colors.get("info"),
         )
 
-        # Notebook styling for a more integrated look
-        # Use non-bold font by default, will be overridden by map for selected tab
         style.configure("TNotebook.Tab", font=TERMINAL_FONT, padding=[10, 5])
         style.map(
             "TNotebook.Tab",
-            font=[("selected", TERMINAL_FONT_BOLD)],  # Bold font for the active tab
+            font=[("selected", TERMINAL_FONT_BOLD)],
             foreground=[
-                ("selected", "white"),  # White text for the active tab
-                ("!selected", style.colors.get("info")),  # Blue text for inactive tabs
+                ("selected", "white"),
+                ("!selected", style.colors.get("info")),
             ],
             background=[
-                # Active tab background same as window bg for seamless look
                 ("selected", style.colors.get("bg")),
-                ("!selected", "#404040"),  # Dark gray background for inactive tabs
+                ("!selected", "#404040"),
             ],
         )
 
@@ -223,7 +218,6 @@ class UIComponents:
         tree_container = ttkb.Frame(parent)
         tree_container.pack(fill="both", expand=True)
 
-        # Use a transparent background for the canvas to let the mica show through
         canvas = tk.Canvas(
             tree_container, highlightthickness=0, bg=self.app.root.style.colors.bg
         )
@@ -246,6 +240,18 @@ class UIComponents:
 
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+
+        def _on_mouse_wheel(event):
+            """Scrolls the canvas view using the mouse wheel."""
+            if event.num == 5 or (hasattr(event, "delta") and event.delta < 0):
+                canvas.yview_scroll(1, "units")
+            elif event.num == 4 or (hasattr(event, "delta") and event.delta > 0):
+                canvas.yview_scroll(-1, "units")
+
+        for widget in [canvas, scrollable_frame]:
+            widget.bind("<MouseWheel>", _on_mouse_wheel)  # For Windows and macOS
+            widget.bind("<Button-4>", _on_mouse_wheel)  # For Linux
+            widget.bind("<Button-5>", _on_mouse_wheel)  # For Linux
 
         self._create_tree_control_buttons(parent, tab_data)
 
@@ -271,7 +277,7 @@ class UIComponents:
             tree_controls,
             text="Refresh",
             command=lambda: tab_data["tree_view_manager"].refresh_tree(),
-            bootstyle="info-outline",  # Changed to info-outline for consistency
+            bootstyle="info-outline",
         ).pack(side="left")
 
     def create_control_buttons(self, parent: ttkb.Frame) -> None:
@@ -285,7 +291,6 @@ class UIComponents:
         left_controls = ttkb.Frame(parent)
         left_controls.grid(row=0, column=0, sticky="w")
 
-        # Assign button to the app instance
         self.app.extract_btn = ttkb.Button(
             left_controls,
             text="Extract Code",
@@ -294,14 +299,12 @@ class UIComponents:
         )
         self.app.extract_btn.pack(side="left", padx=(0, 10))
 
-        # Assign cancel button to the app instance
         self.app.cancel_btn = ttkb.Button(
             left_controls,
             text="Cancel",
             command=self.app.file_processor.cancel_processing,
             bootstyle="danger",
         )
-        # The cancel button is hidden by default and managed by the app state
         self.app.cancel_btn.pack_forget()
 
     def _create_center_controls(self, parent: ttkb.Frame) -> None:
@@ -309,7 +312,6 @@ class UIComponents:
         center_controls = ttkb.Frame(parent)
         center_controls.grid(row=0, column=1, sticky="ew", padx=20)
 
-        # Assign progress bar and status label to the app instance
         self.app.progress = ttkb.Progressbar(
             center_controls, length=300, mode="determinate", bootstyle="success-striped"
         )
