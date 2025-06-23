@@ -96,8 +96,16 @@ class TreeViewManager:
             expander.bind("<Button-1>", lambda e, p=path: self.toggle_expand(p))
         expander.pack(side="left")
         tree_item.expander_label = expander
-
-        tree_item.checked.set(path_str in self.checked_paths)
+        
+        # --- BUG FIX: Set check state based on self or ancestor being checked ---
+        # This ensures new files inside a checked folder are automatically checked on refresh.
+        is_initially_checked = any(
+            path_str == p or path_str.startswith(str(Path(p) / ""))
+            for p in self.checked_paths
+        )
+        tree_item.checked.set(is_initially_checked)
+        # --- END BUG FIX ---
+        
         chk = ttkb.Checkbutton(
             item_frame,
             variable=tree_item.checked,
@@ -177,10 +185,12 @@ class TreeViewManager:
         is_checked = var.get()
         path = Path(path_str)
 
-        paths_to_update = (
-            {str(child) for child in path.rglob("*")} if path.is_dir() else set()
-        )
-        paths_to_update.add(path_str)
+        paths_to_update = {path_str}
+        if path.is_dir():
+            try:
+                paths_to_update.update({str(child) for child in path.rglob("*")})
+            except (IOError, PermissionError):
+                pass # Ignore directories we can't read
 
         if is_checked:
             self.checked_paths.update(paths_to_update)
@@ -224,6 +234,9 @@ class TreeViewManager:
         if not tab_data or not tab_data.get("scrollable_frame"):
             return
 
+        # --- FIX: Ensure scroll handler is applied to new widgets ---
+        # This is handled by ui_components passing the handler and create_tree_item_widget applying it.
+        # To make it work, we need to re-bind events on refresh. The fix is now in ui_components.
         for widget in tab_data["scrollable_frame"].winfo_children():
             widget.destroy()
         self.tree_items.clear()

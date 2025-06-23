@@ -158,9 +158,8 @@ class ThreadedFileProcessor:
                 ):
                     files_to_process.append(p)
 
-                # Update progress during filtering (e.g., every 100 files to avoid UI spam)
                 if i % 100 == 0:
-                    progress = (i / total_paths) * 20  # Filtering takes up first 20%
+                    progress = (i / total_paths) * 20
                     self.progress_queue.put(
                         {
                             "type": "progress",
@@ -185,7 +184,6 @@ class ThreadedFileProcessor:
                 )
                 return
 
-            # Write the report
             self._write_report_threaded(
                 output,
                 source_path,
@@ -222,7 +220,6 @@ class ThreadedFileProcessor:
             with open(output, "w", encoding="utf-8", errors="ignore") as f:
                 self._write_report_header(f, include_mode)
 
-                # --- Write Structure ---
                 self.progress_queue.put(
                     {
                         "type": "progress",
@@ -238,17 +235,14 @@ class ThreadedFileProcessor:
                     f, source_path, paths_for_structure, selected_paths, include_mode
                 )
 
-                # --- Write File Contents ---
                 if not self.app.filenames_only.get():
                     self._write_file_contents_threaded(
                         f, files_to_process, source_path, total_files
                     )
 
-            # If cancelled, the file write loop will exit, so we don't send complete.
             if self.cancel_event.is_set():
                 return
 
-            # --- Success Message ---
             self.progress_queue.put(
                 {
                     "type": "complete",
@@ -276,18 +270,15 @@ class ThreadedFileProcessor:
         f.write("### File Contents\n\n")
 
         for i, path in enumerate(files_to_process):
-            # Check for cancellation before processing each file
             if self.cancel_event.is_set():
-                # No need to send message, the outer function handles it
                 return
 
             try:
                 current_file_num = i + 1
                 rel_path = path.relative_to(source_path)
 
-                # Update progress
-                base_progress = 25  # Structure writing used 25%
-                file_progress = (i / total_files) * 75  # Remaining 75% for files
+                base_progress = 25
+                file_progress = (i / total_files) * 75
                 total_progress = base_progress + file_progress
 
                 self.progress_queue.put(
@@ -298,7 +289,6 @@ class ThreadedFileProcessor:
                     }
                 )
 
-                # Write file content
                 f.write(f"--- file: {rel_path} ---\n")
                 try:
                     content = path.read_text(encoding="utf-8", errors="ignore")
@@ -308,7 +298,6 @@ class ThreadedFileProcessor:
                 f.write("---\n\n")
 
             except Exception as e:
-                # Log error for this specific file but continue
                 f.write(
                     f"--- file: {path.name} ---\n[Error processing file: {e}]\n---\n\n"
                 )
@@ -322,44 +311,34 @@ class ThreadedFileProcessor:
     ) -> bool:
         """
         Determines if a given path should be processed based on the selection mode.
-
-        Args:
-            path: The path to check.
-            selected_paths_set: A set of strings representing the absolute paths of user-checked items.
-            include_mode: A boolean. If True, only checked items are processed.
-                          If False, items are processed unless they or an ancestor are checked.
-            source_path: The root source directory for the current operation.
-
-        Returns:
-            True if the path should be processed, False otherwise.
+        This has been rewritten for clarity and to fix bugs with exclusion logic.
         """
         path_str = str(path)
 
-        # --- BUG FIX START ---
-        # In 'exclude' mode, we need to check if the path or any of its parents are in the exclusion list.
-        if not include_mode:
-            # An item should be EXCLUDED if it's in the checked set OR if any of its parent directories are.
-            # Otherwise, it should be INCLUDED. This fixes the bug where new, unchecked files were excluded.
+        if include_mode:
+            # INCLUDE MODE: Process if the path or any of its ancestors are checked.
+            return any(
+                path_str == p or path_str.startswith(str(Path(p) / ""))
+                for p in selected_paths_set
+            )
+        else:
+            # EXCLUDE MODE: Process if the path AND all of its ancestors are UNCHECKED.
+            # In other words, exclude if the path or any ancestor is in the checked set.
             current = path
             while True:
                 if str(current) in selected_paths_set:
                     return False  # Exclude if the path or a parent is checked
-                if (
-                    current == source_path or current.parent == current
-                ):  # Reached the root
+
+                # Stop if we've reached the source directory itself and it wasn't in the set
+                if current == source_path:
                     break
+
+                # Stop if we've reached the top of the filesystem
+                if current.parent == current:
+                    break
+
                 current = current.parent
             return True  # Include because neither it nor any parent was in the exclude list
-
-        # Original 'include' mode logic (remains the same)
-        # In 'include' mode, an item should be INCLUDED if it's in the checked set
-        # OR if one of its parent directories is checked.
-        is_selected = any(
-            path_str == p or path_str.startswith(str(Path(p) / ""))
-            for p in selected_paths_set
-        )
-        return is_selected
-        # --- BUG FIX END ---
 
     def _build_structure_paths(
         self,
@@ -412,7 +391,6 @@ class ThreadedFileProcessor:
 
         def build_tree(current_path, prefix=""):
             try:
-                # Get all children, not just those in paths_for_structure initially
                 children = sorted(
                     list(current_path.iterdir()),
                     key=lambda p: (p.is_file(), p.name.lower()),
@@ -420,7 +398,6 @@ class ThreadedFileProcessor:
             except (IOError, PermissionError):
                 children = []
 
-            # Filter children to only those that should be part of the tree
             displayable_children = [p for p in children if p in paths_for_structure]
 
             for i, child in enumerate(displayable_children):
@@ -434,7 +411,6 @@ class ThreadedFileProcessor:
 
                 if not is_processed:
                     f.write(" [EXCLUDED]\n")
-                    # If a directory is excluded, don't recurse into it
                     if child.is_dir():
                         continue
                 else:
@@ -458,11 +434,7 @@ class ThreadedFileProcessor:
         """Shows a success dialog centered on the main window with the new theme."""
         dialog = tk.Toplevel(self.app.root)
         dialog.title(title)
-
-        # Apply theme to the dialog
         dialog.configure(bg=self.app.style.colors.get("bg"))
-
-        # Make the dialog transient to the main window
         dialog.transient(self.app.root)
         dialog.grab_set()
         dialog.resizable(False, False)
@@ -488,7 +460,6 @@ class ThreadedFileProcessor:
         dialog.bind("<Return>", lambda e: dialog.destroy())
         dialog.bind("<Escape>", lambda e: dialog.destroy())
 
-        # Center the dialog on the parent window
         dialog.update_idletasks()
         parent_x = self.app.root.winfo_x()
         parent_y = self.app.root.winfo_y()
