@@ -137,11 +137,9 @@ class TreeViewManager:
         if is_expandable:
             name_label.bind("<Button-1>", lambda e, p=path: self.toggle_expand(p))
 
-        # --- BUG FIX: Apply scroll handler to all newly created widgets ---
         tab_data = self.get_tab_data()
         if tab_data and "bind_scroll_handler" in tab_data:
             tab_data["bind_scroll_handler"](item_frame)
-        # --- END BUG FIX ---
 
     def toggle_expand(self, path: Path):
         """
@@ -166,11 +164,9 @@ class TreeViewManager:
                     print(f"Error expanding {path}: {e}")
             tree_item.expanded = True
 
-            # --- BUG FIX: Apply scroll handler to the new container for children ---
             tab_data = self.get_tab_data()
             if tab_data and "bind_scroll_handler" in tab_data and tree_item.container:
                 tab_data["bind_scroll_handler"](tree_item.container)
-            # --- END BUG FIX ---
         else:
             tree_item.expander_label.config(text="[+]")
             if tree_item.container:
@@ -183,28 +179,89 @@ class TreeViewManager:
                 if not Path(p).is_relative_to(path) or p == path_str
             }
 
-    def on_item_check(self, path_str: str, var: tk.BooleanVar):
-        """
-        Handles the logic when a checkbox is clicked.
-        """
-        is_checked = var.get()
-        path = Path(path_str)
-
-        paths_to_update = {path_str}
+    # --- FIX IMPLEMENTATION START ---
+    def _update_descendants(self, path: Path, is_checked: bool):
+        """Updates the checked state of a path and all its descendants."""
+        paths_to_modify = {str(path)}
         if path.is_dir():
             try:
-                paths_to_update.update({str(child) for child in path.rglob("*")})
+                # Recursively find all children to update their state.
+                paths_to_modify.update({str(child) for child in path.rglob("*")})
             except (IOError, PermissionError):
                 pass
 
         if is_checked:
-            self.checked_paths.update(paths_to_update)
+            self.checked_paths.update(paths_to_modify)
         else:
-            self.checked_paths.difference_update(paths_to_update)
+            self.checked_paths.difference_update(paths_to_modify)
 
-        for p_str in paths_to_update:
+        # Update the UI for any visible items that were affected.
+        for p_str in paths_to_modify:
             if p_str in self.tree_items:
                 self.tree_items[p_str].checked.set(is_checked)
+
+    def _update_parents(self, path: Path):
+        """
+        After a child's state changes, recursively update parent states.
+        If all of a directory's children are checked, the directory is checked.
+        Otherwise, the directory is unchecked.
+        """
+        tab_data = self.get_tab_data()
+        if not tab_data or not tab_data["source_path"].get():
+            return
+
+        source_path = Path(tab_data["source_path"].get())
+        parent = path.parent
+
+        # Traverse up from the item's parent to the source root
+        while parent.is_relative_to(source_path) or parent == source_path:
+            parent_str = str(parent)
+            if not parent.is_dir():
+                if parent == source_path:
+                    break
+                parent = parent.parent
+                continue
+
+            all_children_checked = True
+            try:
+                # Check the state of all direct children of the parent
+                for child in parent.iterdir():
+                    if str(child) not in self.checked_paths:
+                        all_children_checked = False
+                        break
+            except (IOError, PermissionError):
+                all_children_checked = False
+
+            parent_is_currently_checked = parent_str in self.checked_paths
+
+            if all_children_checked and not parent_is_currently_checked:
+                self.checked_paths.add(parent_str)
+                if parent_str in self.tree_items:
+                    self.tree_items[parent_str].checked.set(True)
+            elif not all_children_checked and parent_is_currently_checked:
+                self.checked_paths.remove(parent_str)
+                if parent_str in self.tree_items:
+                    self.tree_items[parent_str].checked.set(False)
+
+            if parent == source_path:
+                break
+            parent = parent.parent
+
+    def on_item_check(self, path_str: str, var: tk.BooleanVar):
+        """
+        Handles the logic when a checkbox is clicked, updating both
+        descendants and parent items to maintain a consistent state.
+        """
+        is_checked = var.get()
+        path = Path(path_str)
+
+        # 1. Update the clicked item and all its descendants.
+        self._update_descendants(path, is_checked)
+
+        # 2. Recursively update the state of parent directories.
+        self._update_parents(path)
+
+    # --- FIX IMPLEMENTATION END ---
 
     def select_all(self):
         """Selects all files and folders for the current source."""
