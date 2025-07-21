@@ -71,7 +71,7 @@ jobs:
         run: |
           docker run --rm -v "${{ github.workspace }}":/app -w /app fedora:latest bash -c " \
             echo 'Installing build dependencies in Fedora container...' && \
-            dnf install -y python3-pip python3-devel gcc zip && \
+            dnf install -y python3-pip python3-devel gcc zip python3-tkinter && \
             echo 'Installing application requirements...' && \
             pip3 install --no-cache-dir -r requirements.txt && \
             echo 'Installing PyInstaller...' && \
