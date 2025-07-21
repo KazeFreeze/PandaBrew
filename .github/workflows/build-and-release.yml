@@ -15,9 +15,22 @@ permissions:
 
 jobs:
   build:
+    # --- Strategy Matrix ---
+    # Define the different operating systems and corresponding build targets.
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            build_target: windows
+            asset_name: PandaBrew-windows.zip
+            executable_path: dist/PandaBrew.exe
+          - os: ubuntu-latest
+            build_target: fedora
+            asset_name: PandaBrew-fedora.zip
+            executable_path: dist/PandaBrew
+
     # --- Runner ---
-    # We will build on the latest version of Windows
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
 
     steps:
       # --- 1. Checkout Code ---
@@ -30,23 +43,19 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11" # You can change this to your desired Python version
+          python-version: "3.11"
 
-      # --- 3. Install Dependencies ---
-      # This step installs PyInstaller and the packages from your requirements.txt file.
-      - name: Install dependencies
+      # --- 3. Install Dependencies (Windows) ---
+      - name: Install Windows dependencies
+        if: matrix.build_target == 'windows'
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
           pip install -r requirements.txt
 
-      # --- 4. Build the Executable ---
-      # This is the core build step using PyInstaller.
-      # --name: Sets the output file name.
-      # --onefile: Creates a single .exe file.
-      # --windowed: Prevents a console window from appearing when the GUI runs.
-      # --icon: Specifies your application icon.
-      - name: Build executable with PyInstaller
+      # --- 4. Build Executable (Windows) ---
+      - name: Build Windows executable with PyInstaller
+        if: matrix.build_target == 'windows'
         run: |
           pyinstaller `
             --name "PandaBrew" `
@@ -55,20 +64,45 @@ jobs:
             --icon "pandabrew.ico" `
             main.py
 
-      # --- 5. Package for Release ---
+      # --- 5. Build Executable (Fedora) ---
+      # We run this on an ubuntu runner but execute the build inside a Fedora Docker container.
+      - name: Build Fedora executable with PyInstaller
+        if: matrix.build_target == 'fedora'
+        run: |
+          docker run --rm -v "${{ github.workspace }}":/app -w /app fedora:latest bash -c " \
+            echo 'Installing build dependencies in Fedora container...' && \
+            dnf install -y python3-pip python3-devel gcc && \
+            echo 'Installing application requirements...' && \
+            pip3 install --no-cache-dir -r requirements.txt && \
+            echo 'Installing PyInstaller...' && \
+            pip3 install --no-cache-dir pyinstaller && \
+            echo 'Building executable...' && \
+            pyinstaller \
+              --name PandaBrew \
+              --onefile \
+              --windowed \
+              --icon pandabrew.ico \
+              main.py \
+          "
+      
+      # --- 6. Package the Executable ---
       # This step zips the final executable for easier distribution.
-      # The release will contain 'PandaBrew-windows.zip'.
       - name: Package executable
         run: |
-          Compress-Archive -Path "dist/PandaBrew.exe" -DestinationPath "PandaBrew-windows.zip"
+          if [ "${{ matrix.build_target }}" == "windows" ]; then
+            Compress-Archive -Path "${{ matrix.executable_path }}" -DestinationPath "${{ matrix.asset_name }}"
+          else
+            zip -r "${{ matrix.asset_name }}" "${{ matrix.executable_path }}"
+          fi
+        shell: bash
 
-      # --- 6. Create GitHub Release ---
+      # --- 7. Create GitHub Release and Upload Assets ---
       # This step creates the release and uploads the zipped executable as an asset.
-      # It uses the tag name for the release title.
-      - name: Create Release
+      # It runs for each job in the matrix, adding its asset to the same release.
+      - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: PandaBrew-windows.zip
+          files: ${{ matrix.asset_name }}
           name: "Release ${{ github.ref_name }}"
           tag_name: ${{ github.ref_name }}
           body: "Official release of PandaBrew, version ${{ github.ref_name }}."
