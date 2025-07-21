@@ -4,7 +4,7 @@
 
 <div align="center">
 
-A modern GUI utility for selectively extracting and packaging project source code into a single, comprehensive text file. Perfect for creating project snapshots for LLMs, documentation, or code reviews.
+A modern, cross-platform GUI utility for selectively extracting and packaging project source code into a single, comprehensive text file. Perfect for creating project snapshots for LLMs, documentation, or code reviews.
 
 [![Release Version](https://img.shields.io/github/v/release/KazeFreeze/PandaBrew?style=for-the-badge&logo=github)](https://github.com/KazeFreeze/PandaBrew/releases)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/KazeFreeze/PandaBrew/build-and-release.yml?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/KazeFreeze/PandaBrew/actions/workflows/build-and-release.yml)
@@ -18,6 +18,7 @@ PandaBrew is a desktop application built with Python and `ttkbootstrap` that pro
 
 ## ✨ Key Features
 
+- **Cross-Platform**: Natively supports **Windows** and **Fedora Linux**.
 - **Modern Tabbed GUI**: Manage multiple project extractions in separate tabs, each with its own configuration.
 - **Flexible File Selection**: A classic-style file tree allows you to check files and folders for processing.
 - **Include/Exclude Modes**: Choose to either package _only_ the checked items or package _everything except_ the checked items.
@@ -25,7 +26,7 @@ PandaBrew is a desktop application built with Python and `ttkbootstrap` that pro
 - **Responsive UI**: File processing is handled in a separate thread, so the UI never freezes, even with large projects.
 - **Real-time Progress**: A progress bar and status label keep you updated on the extraction process.
 - **Content Control**: Option to extract only the project structure and filenames without the file contents.
-- **Automated Builds**: Includes a GitHub Actions workflow to automatically build and release a Windows executable when you push a new version tag.
+- **Automated Builds**: GitHub Actions workflow automatically builds and releases executables for Windows and Fedora when you push a new version tag.
 
 ## 📸 Screenshots
 
@@ -34,19 +35,20 @@ _(UI)_
 
 ## 🚀 Getting Started
 
-Follow these instructions to get a copy of the project up and running on your local machine for development and testing purposes.
+You can either download the latest executable for your operating system from the [Releases page](https://github.com/KazeFreeze/PandaBrew/releases) or run it from the source.
 
 ### Prerequisites
 
 - [Python 3.9+](https://www.python.org/downloads/)
 - `pip` (Python package installer)
+- For Fedora/Linux: `sudo dnf install -y python3-tkinter`
 
-### Installation
+### Installation from Source
 
 1.  **Clone the repository:**
     ```sh
     git clone [https://github.com/KazeFreeze/PandaBrew.git](https://github.com/KazeFreeze/PandaBrew.git)
-    cd YOUR_REPOSITORY
+    cd PandaBrew
     ```
 2.  **Install the required packages:**
     ```sh
@@ -56,9 +58,14 @@ Follow these instructions to get a copy of the project up and running on your lo
 ## 🖥️ Usage
 
 1.  **Run the application:**
-    ```sh
-    python main.py
-    ```
+    - On Windows:
+      ```sh
+      python main.py
+      ```
+    - On Linux:
+      ```sh
+      python3 main.py
+      ```
 2.  **Select Source**: In a tab, click `Browse` to choose the root directory of the project you want to extract.
 3.  **Select Files**: Use the checkboxes in the tree view to select the files and folders you want to process.
 4.  **Choose Mode**:
@@ -69,20 +76,20 @@ Follow these instructions to get a copy of the project up and running on your lo
 
 ## 🛠️ Building from Source
 
-This project uses `PyInstaller` to create a single executable file for Windows. An automated build process is already configured in `.github/workflows/build-and-release.yml`.
+This project uses `PyInstaller` to create single-file executables. An automated build process is configured in `.github/workflows/build-and-release.yml` to create executables for both Windows and Fedora Linux.
 
-To build the executable manually:
+To build the executable manually, first install PyInstaller (`pip install pyinstaller`), then run the appropriate build command.
 
-1.  **Install PyInstaller:**
-    ```sh
-    pip install pyinstaller
-    ```
-2.  **Run the build command:**
-    (This command is adapted from the project's build workflow file)
-    ```sh
-    pyinstaller --name "PandaBrew" --onefile --windowed --icon "pandabrew.ico" main.py
-    ```
-3.  The final executable will be located in the `dist` folder.
+- **For Windows:**
+  ```sh
+  pyinstaller --name "PandaBrew" --onefile --windowed --icon "pandabrew.ico" main.py
+  ```
+- **For Linux (from the project root):**
+  ```sh
+  pyinstaller --name "PandaBrew" --onefile --windowed --icon "pandabrew.ico" --hidden-import=PIL._tkinter_finder main.py
+  ```
+
+The final executable will be located in the `dist` folder.
 
 ## 🤝 Contributing
 
@@ -96,9 +103,10 @@ Contributions are what make the open-source community such an amazing place to l
 
 ## 📄 License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+Distributed under the MIT License.
 
 ## 🙏 Acknowledgements
 
 - [ttkbootstrap](https://github.com/israel-dryer/ttkbootstrap) - For making modern Tkinter styling so accessible.
 - [pywinstyles](https://github.com/CvlKul/pywinstyles) - For the beautiful mica window effect on Windows.
+
