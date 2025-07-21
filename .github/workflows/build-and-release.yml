@@ -82,6 +82,7 @@ jobs:
               --onefile \
               --windowed \
               --icon pandabrew.ico \
+              --hidden-import=PIL._tkinter_finder \
               main.py \
           "
       
