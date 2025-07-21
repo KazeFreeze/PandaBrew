@@ -71,7 +71,7 @@ jobs:
         run: |
           docker run --rm -v "${{ github.workspace }}":/app -w /app fedora:latest bash -c " \
             echo 'Installing build dependencies in Fedora container...' && \
-            dnf install -y python3-pip python3-devel gcc && \
+            dnf install -y python3-pip python3-devel gcc zip && \
             echo 'Installing application requirements...' && \
             pip3 install --no-cache-dir -r requirements.txt && \
             echo 'Installing PyInstaller...' && \
@@ -85,18 +85,18 @@ jobs:
               main.py \
           "
       
-      # --- 6. Package the Executable ---
-      # This step zips the final executable for easier distribution.
-      - name: Package executable
-        run: |
-          if [ "${{ matrix.build_target }}" == "windows" ]; then
-            Compress-Archive -Path "${{ matrix.executable_path }}" -DestinationPath "${{ matrix.asset_name }}"
-          else
-            zip -r "${{ matrix.asset_name }}" "${{ matrix.executable_path }}"
-          fi
-        shell: bash
+      # --- 6. Package the Executable (Windows) ---
+      - name: Package Windows executable
+        if: matrix.os == 'windows-latest'
+        run: Compress-Archive -Path ${{ matrix.executable_path }} -DestinationPath ${{ matrix.asset_name }}
+        shell: pwsh
 
-      # --- 7. Create GitHub Release and Upload Assets ---
+      # --- 7. Package the Executable (Fedora) ---
+      - name: Package Fedora executable
+        if: matrix.os == 'ubuntu-latest'
+        run: zip -j ${{ matrix.asset_name }} ${{ matrix.executable_path }}
+      
+      # --- 8. Create GitHub Release and Upload Assets ---
       # This step creates the release and uploads the zipped executable as an asset.
       # It runs for each job in the matrix, adding its asset to the same release.
       - name: Create Release and Upload Asset
