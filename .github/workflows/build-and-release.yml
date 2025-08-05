@@ -3,6 +3,7 @@
 name: Build and Release Executable
 
 # --- Trigger ---
+# This workflow runs when a new tag matching the pattern "v*.*.*" is pushed.
 on:
   push:
     tags:
@@ -16,7 +17,7 @@ permissions:
 jobs:
   build:
     # --- Strategy Matrix ---
-    # Define the different operating systems and corresponding build targets.
+    # Define the different operating systems, architectures, and corresponding build targets.
     strategy:
       matrix:
         include:
@@ -25,8 +26,12 @@ jobs:
             asset_name: PandaBrew-windows.zip
             executable_path: dist/PandaBrew.exe
           - os: ubuntu-latest
-            build_target: fedora
-            asset_name: PandaBrew-fedora.zip
+            build_target: fedora-x86_64
+            asset_name: PandaBrew-fedora-x86_64.zip
+            executable_path: dist/PandaBrew
+          - os: ubuntu-latest
+            build_target: linux-aarch64
+            asset_name: PandaBrew-linux-aarch64.zip
             executable_path: dist/PandaBrew
 
     # --- Runner ---
@@ -38,14 +43,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- 2. Set up Python ---
-      # This step installs a specific version of Python.
+      # --- 2. Set up QEMU for ARM emulation ---
+      # This is necessary to build for aarch64 on an x86_64 runner.
+      # It will only be used by the aarch64 build job.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # --- 3. Set up Python (for Windows build) ---
+      # This step installs a specific version of Python on the host runner.
+      # It's primarily for the Windows build which doesn't use Docker.
       - name: Set up Python
+        if: matrix.build_target == 'windows'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # --- 3. Install Dependencies (Windows) ---
+      # --- 4. Install Dependencies (Windows) ---
       - name: Install Windows dependencies
         if: matrix.build_target == 'windows'
         run: |
@@ -53,7 +66,7 @@ jobs:
           pip install pyinstaller
           pip install -r requirements.txt
 
-      # --- 4. Build Executable (Windows) ---
+      # --- 5. Build Executable (Windows) ---
       - name: Build Windows executable with PyInstaller
         if: matrix.build_target == 'windows'
         run: |
@@ -64,10 +77,10 @@ jobs:
             --icon "pandabrew.ico" `
             main.py
 
-      # --- 5. Build Executable (Fedora) ---
+      # --- 6. Build Executable (Fedora x86_64) ---
       # We run this on an ubuntu runner but execute the build inside a Fedora Docker container.
-      - name: Build Fedora executable with PyInstaller
-        if: matrix.build_target == 'fedora'
+      - name: Build Fedora (x86_64) executable with PyInstaller
+        if: matrix.build_target == 'fedora-x86_64'
         run: |
           docker run --rm -v "${{ github.workspace }}":/app -w /app fedora:latest bash -c " \
             echo 'Installing build dependencies in Fedora container...' && \
@@ -85,19 +98,44 @@ jobs:
               --hidden-import=PIL._tkinter_finder \
               main.py \
           "
+
+      # --- 7. Build Executable (Linux aarch64) ---
+      # This runs on an ubuntu runner but builds inside a Debian aarch64 container using QEMU.
+      - name: Build Linux (aarch64) executable with PyInstaller
+        if: matrix.build_target == 'linux-aarch64'
+        run: |
+          docker run --rm --platform linux/arm64 -v "${{ github.workspace }}":/app -w /app arm64v8/debian:bullseye bash -c " \
+            echo 'Updating package list in Debian aarch64 container...' && \
+            apt-get update && \
+            echo 'Installing build dependencies...' && \
+            apt-get install -y python3 python3-pip python3-tk gcc zip && \
+            echo 'Installing application requirements...' && \
+            pip3 install --no-cache-dir -r requirements.txt && \
+            echo 'Installing PyInstaller...' && \
+            pip3 install --no-cache-dir pyinstaller && \
+            echo 'Building executable...' && \
+            pyinstaller \
+              --name PandaBrew \
+              --onefile \
+              --windowed \
+              --icon pandabrew.ico \
+              --hidden-import=PIL._tkinter_finder \
+              main.py \
+          "
       
-      # --- 6. Package the Executable (Windows) ---
+      # --- 8. Package the Executable (Windows) ---
       - name: Package Windows executable
         if: matrix.os == 'windows-latest'
         run: Compress-Archive -Path ${{ matrix.executable_path }} -DestinationPath ${{ matrix.asset_name }}
         shell: pwsh
 
-      # --- 7. Package the Executable (Fedora) ---
-      - name: Package Fedora executable
+      # --- 9. Package the Executable (Linux) ---
+      # This step packages the output for both Fedora and aarch64 builds.
+      - name: Package Linux executable
         if: matrix.os == 'ubuntu-latest'
         run: zip -j ${{ matrix.asset_name }} ${{ matrix.executable_path }}
       
-      # --- 8. Create GitHub Release and Upload Assets ---
+      # --- 10. Create GitHub Release and Upload Assets ---
       # This step creates the release and uploads the zipped executable as an asset.
       # It runs for each job in the matrix, adding its asset to the same release.
       - name: Create Release and Upload Asset
