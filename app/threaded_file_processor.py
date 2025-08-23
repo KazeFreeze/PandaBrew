@@ -85,6 +85,9 @@ class ThreadedFileProcessor:
             Messagebox.show_error("Error", "Please select a source directory and an output file.", parent=self.app.root)
             return
 
+        # Save the current state (including global filters) before starting
+        self.app.config_manager.save_app_state()
+
         self.cancel_event.clear()
         self.is_processing = True
         self.app.set_ui_processing_state(True)
