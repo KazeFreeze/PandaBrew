@@ -40,6 +40,7 @@ class ModernCodeExtractorGUI:
         # App state variables
         self.config: Dict[str, Any] = self.config_manager.load_app_state()
         self.include_mode = tk.BooleanVar(value=self.config.get("include_mode", True))
+        self.include_mode.trace_add("write", self.on_mode_change)
         self.filenames_only = tk.BooleanVar(
             value=self.config.get("filenames_only", False)
         )
@@ -57,17 +58,42 @@ class ModernCodeExtractorGUI:
         self.cancel_btn: Optional[ttkb.Button] = None
         self.progress: Optional[ttkb.Progressbar] = None
         self.status_label: Optional[ttkb.Label] = None
+        self.global_include_patterns: Optional[tk.Text] = None
+        self.global_exclude_patterns: Optional[tk.Text] = None
 
         # Initialize UI and events
         self.ui_components.create_main_layout()
+        self._load_global_filters_from_config()  # Load patterns into new UI
         self.setup_event_bindings()
         self.load_tabs_from_config()
         self.on_tab_change()  # Set initial title and canvas style
+
+    def _load_global_filters_from_config(self) -> None:
+        """Populates the global filter text widgets from the loaded config."""
+        if self.global_include_patterns:
+            include_patterns = self.config.get("global_include_patterns", "")
+            self.global_include_patterns.delete("1.0", tk.END)
+            self.global_include_patterns.insert("1.0", include_patterns)
+
+        if self.global_exclude_patterns:
+            exclude_patterns = self.config.get("global_exclude_patterns", "")
+            self.global_exclude_patterns.delete("1.0", tk.END)
+            self.global_exclude_patterns.insert("1.0", exclude_patterns)
 
     def setup_event_bindings(self) -> None:
         """Centralized place to set up all major event bindings."""
         if self.notebook:
             self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
+
+    def on_mode_change(self, *args) -> None:
+        """
+        Callback for when the include/exclude mode changes.
+        Refreshes the tree view to show the correct selections for the new mode.
+        """
+        active_tab = self.get_active_tab()
+        if active_tab:
+            # The tree view needs to be cleared and repopulated with the correct checks
+            active_tab["tree_view_manager"].refresh_tree()
 
     def add_new_tab(
         self,

@@ -1,0 +1,16 @@
+--- Project Extraction Report ---
+Timestamp: 2025-08-23T17:58:52.545005
+Selection Mode: INCLUDE checked items
+---
+
+### Project Structure
+
+test_project
+└── src
+    └── main.py
+
+### File Contents
+
+--- file: src/main.py ---
+print('hello from main')
+---

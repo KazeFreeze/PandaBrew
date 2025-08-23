@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 import ttkbootstrap as ttkb
+from ttkbootstrap.scrolled import ScrolledText
 from pathlib import Path
 from typing import Dict, Any, Callable
 
@@ -71,9 +72,52 @@ class UIComponents:
 
         self._create_tab_control_buttons(top_frame)
 
+        # Add the new global filter settings UI
+        self._create_global_filter_settings(self.app.root)
+
         control_container = ttkb.Frame(self.app.root, padding=(10, 10))
         control_container.pack(fill="x", side="bottom")
         self.create_control_buttons(control_container)
+
+    def _create_global_filter_settings(self, parent: ttkb.Frame) -> None:
+        """Creates the UI for global include/exclude filter patterns."""
+        filter_container = ttkb.LabelFrame(
+            parent, text="Global .gitignore-style Filters", padding=(15, 10)
+        )
+        filter_container.pack(fill="x", padx=10, pady=5)
+
+        filter_container.grid_columnconfigure(0, weight=1)
+        filter_container.grid_columnconfigure(1, weight=1)
+
+        # --- Include Patterns ---
+        include_frame = ttkb.Frame(filter_container)
+        include_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        ttkb.Label(
+            include_frame,
+            text="Global Include (one pattern per line)",
+            font=TERMINAL_FONT_BOLD,
+        ).pack(anchor="w", pady=(0, 5))
+
+        self.app.global_include_patterns = ScrolledText(
+            include_frame, height=5, font=TERMINAL_FONT,
+            autohide=True, bootstyle="info"
+        )
+        self.app.global_include_patterns.pack(fill="both", expand=True)
+
+        # --- Exclude Patterns ---
+        exclude_frame = ttkb.Frame(filter_container)
+        exclude_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        ttkb.Label(
+            exclude_frame,
+            text="Global Exclude (one pattern per line)",
+            font=TERMINAL_FONT_BOLD,
+        ).pack(anchor="w", pady=(0, 5))
+
+        self.app.global_exclude_patterns = ScrolledText(
+            exclude_frame, height=5, font=TERMINAL_FONT,
+            autohide=True, bootstyle="info"
+        )
+        self.app.global_exclude_patterns.pack(fill="both", expand=True)
 
     def _create_tab_control_buttons(self, parent: ttkb.Frame) -> None:
         """Creates the '+' and 'x' buttons for tab management."""
