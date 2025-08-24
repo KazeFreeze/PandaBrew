@@ -44,12 +44,14 @@ class TreeViewManager:
             self.create_tree_item_widget(path, parent_item.container)
 
         if end < len(parent_item.child_paths):
+            # FIX: Create button first, then create partial command that references it.
             load_more_button = ttkb.Button(
                 parent_item.container,
                 text=f"Load More ({len(parent_item.child_paths) - end} remaining)...",
-                bootstyle="link",
-                command=partial(self._load_more, parent_item, load_more_button, end)
+                bootstyle="link"
             )
+            command = partial(self._load_more, parent_item, load_more_button, end)
+            load_more_button.config(command=command)
             load_more_button.pack(fill="x", padx=20, pady=5)
 
     def _load_more(self, parent_item: TreeItem, button_to_destroy: ttkb.Button, new_offset: int):
@@ -120,7 +122,6 @@ class TreeViewManager:
                 tree_item.container.destroy()
                 tree_item.container = None
 
-            # This is the fix: remove all descendant items from the tracking dictionary
             self.tree_items = {
                 p: i for p, i in self.tree_items.items()
                 if not Path(p).is_relative_to(path) or p == path_str
