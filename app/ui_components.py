@@ -79,24 +79,22 @@ class UIComponents:
         filter_container = ttkb.LabelFrame(parent, text="Per-Tab Filter Patterns")
         filter_container.pack(fill="x")
 
-        title_frame = ttkb.Frame(filter_container)
-        title_frame.pack(fill="x", padx=5, pady=0, anchor="n")
-        help_button = ttkb.Button(title_frame, text="? Syntax Help", bootstyle="link", command=self.app.show_filter_help)
-        help_button.pack(side="right")
+        help_button = ttkb.Button(filter_container, text="?", bootstyle="info,outline", width=2, command=self.app.show_filter_help)
+        help_button.place(relx=1.0, y=0, x=-30, anchor="ne")
 
-        text_area_frame = ttkb.Frame(filter_container)
-        text_area_frame.pack(fill="x", expand=True, padx=5, pady=5)
-        text_area_frame.grid_columnconfigure(0, weight=1)
-        text_area_frame.grid_columnconfigure(1, weight=1)
+        content_frame = ttkb.Frame(filter_container)
+        content_frame.pack(fill="both", expand=True, padx=5, pady=(10, 5))
+        content_frame.grid_columnconfigure(0, weight=1)
+        content_frame.grid_columnconfigure(1, weight=1)
 
-        exclude_frame = ttkb.Frame(text_area_frame)
+        exclude_frame = ttkb.Frame(content_frame)
         exclude_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
         ttkb.Label(exclude_frame, text="Exclude Patterns").pack(anchor="w", pady=(0, 5))
         exclude_text = ScrolledText(exclude_frame, height=4, font=TERMINAL_FONT, autohide=True, bootstyle="info")
         exclude_text.pack(fill="both", expand=True)
         tab_data["exclude_patterns_text"] = exclude_text
 
-        include_frame = ttkb.Frame(text_area_frame)
+        include_frame = ttkb.Frame(content_frame)
         include_frame.grid(row=0, column=1, sticky="nsew", padx=(2, 0))
         ttkb.Label(include_frame, text="Include Patterns (Overrides Exclude)").pack(anchor="w", pady=(0, 5))
         include_text = ScrolledText(include_frame, height=4, font=TERMINAL_FONT, autohide=True, bootstyle="info")
