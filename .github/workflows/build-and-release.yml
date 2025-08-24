@@ -3,13 +3,15 @@
 name: Build and Release Executable
 
 # --- Trigger ---
+# This workflow runs on pushes to the main branch and on manual dispatch.
 on:
   push:
     branches:
-      - release
+      - main
   workflow_dispatch:
 
 # --- Permissions ---
+# Enhanced permissions for semantic release
 permissions:
   contents: write
   issues: write
@@ -46,7 +48,7 @@ jobs:
         run: |
           cat > .releaserc.json << 'EOF'
           {
-            "branches": ["main", "release"],
+            "branches": ["main"],
             "tagFormat": "v${version}",
             "repositoryUrl": "https://github.com/${{ github.repository }}",
             "plugins": [
