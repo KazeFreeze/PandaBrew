@@ -1,6 +1,4 @@
-# .github/workflows/build-and-release.yml
-
-name: Build and Release Executable
+name: Test, Build, and Release
 
 # --- Trigger ---
 # This workflow runs on push to release branch (for semantic release) and on manual dispatch
@@ -103,35 +101,23 @@ jobs:
             build_target: linux-aarch64
             asset_name: PandaBrew-linux-aarch64
             executable_path: dist/PandaBrew
-
-    # --- Runner ---
     runs-on: ${{ matrix.os }}
-
     steps:
-      # --- 1. Checkout Code ---
-      # This step checks out a copy of your repository onto the runner.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.semantic-release.outputs.new-release-git-tag }}
 
-      # --- 2. Set up QEMU for ARM emulation ---
-      # This is necessary to build for aarch64 on an x86_64 runner.
-      # It will only run on the Linux-based runners.
       - name: Set up QEMU
         if: matrix.os == 'ubuntu-latest'
         uses: docker/setup-qemu-action@v3
 
-      # --- 3. Set up Python (for Windows build) ---
-      # This step installs a specific version of Python on the host runner.
-      # It's primarily for the Windows build which doesn't use Docker.
       - name: Set up Python
         if: matrix.build_target == 'windows'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # --- 4. Install Dependencies (Windows) ---
       - name: Install Windows dependencies
         if: matrix.build_target == 'windows'
         run: |
@@ -139,8 +125,7 @@ jobs:
           pip install pyinstaller
           pip install -r requirements.txt
 
-      # --- 5. Build Executable (Windows) ---
-      - name: Build Windows executable with PyInstaller
+      - name: Build Windows executable
         if: matrix.build_target == 'windows'
         run: |
           pyinstaller `
@@ -150,51 +135,24 @@ jobs:
             --icon "pandabrew.ico" `
             main.py
 
-      # --- 6. Build Executable (Fedora x86_64) ---
-      # We run this on an ubuntu runner but execute the build inside a Fedora Docker container.
-      - name: Build Fedora (x86_64) executable with PyInstaller
+      - name: Build Fedora (x86_64) executable
         if: matrix.build_target == 'fedora-x86_64'
         run: |
           docker run --rm -v "${{ github.workspace }}":/app -w /app fedora:latest bash -c " \
-            echo 'Installing build dependencies in Fedora container...' && \
             dnf install -y python3-pip python3-devel gcc zip python3-tkinter && \
-            echo 'Installing application requirements...' && \
             pip3 install --no-cache-dir -r requirements.txt && \
-            echo 'Installing PyInstaller...' && \
             pip3 install --no-cache-dir pyinstaller && \
-            echo 'Building executable...' && \
-            pyinstaller \
-              --name PandaBrew \
-              --onefile \
-              --windowed \
-              --icon pandabrew.ico \
-              --hidden-import=PIL._tkinter_finder \
-              main.py \
-          "
+            pyinstaller --name PandaBrew --onefile --windowed --icon pandabrew.ico --hidden-import=PIL._tkinter_finder main.py"
 
-      # --- 7. Build Executable (Linux aarch64) ---
-      # This runs on an ubuntu runner but builds inside a Debian aarch64 container using QEMU.
-      - name: Build Linux (aarch64) executable with PyInstaller
+      - name: Build Linux (aarch64) executable
         if: matrix.build_target == 'linux-aarch64'
         run: |
           docker run --rm --platform linux/arm64 -v "${{ github.workspace }}":/app -w /app arm64v8/debian:bullseye bash -c " \
-            echo 'Updating package list in Debian aarch64 container...' && \
             apt-get update && \
-            echo 'Installing build dependencies...' && \
             apt-get install -y --no-install-recommends python3 python3-pip python3-tk python3-dev gcc zip && \
-            echo 'Installing application requirements...' && \
             pip3 install --no-cache-dir -r requirements.txt && \
-            echo 'Installing PyInstaller...' && \
             pip3 install --no-cache-dir pyinstaller && \
-            echo 'Building executable...' && \
-            pyinstaller \
-              --name PandaBrew \
-              --onefile \
-              --windowed \
-              --icon pandabrew.ico \
-              --hidden-import=PIL._tkinter_finder \
-              main.py \
-          "
+            pyinstaller --name PandaBrew --onefile --windowed --icon pandabrew.ico --hidden-import=PIL._tkinter_finder main.py"
       
       # --- 8. Rename Executable for Upload ---
       - name: Rename executable for upload
