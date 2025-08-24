@@ -49,6 +49,23 @@ jobs:
         run: |
           npm install -g semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/github
 
+      - name: Get latest existing version
+        id: get_version
+        run: |
+          # Get the latest tag that follows semantic versioning
+          LATEST_TAG=$(git tag -l "v*.*.*" --sort=-version:refname | head -1)
+          if [ -n "$LATEST_TAG" ]; then
+            echo "Found latest tag: $LATEST_TAG"
+            echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+            # Extract version without 'v' prefix
+            VERSION=${LATEST_TAG#v}
+            echo "latest_version=$VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "No semantic version tags found"
+            echo "latest_tag=" >> $GITHUB_OUTPUT
+            echo "latest_version=" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create .releaserc.json
         run: |
           cat > .releaserc.json << 'EOF'
@@ -92,6 +109,13 @@ jobs:
           }
           EOF
 
+      - name: Set initial version if needed
+        run: |
+          if [ -n "${{ steps.get_version.outputs.latest_version }}" ]; then
+            echo "Setting SEMANTIC_RELEASE_INITIAL_VERSION to continue from ${{ steps.get_version.outputs.latest_version }}"
+            echo "SEMANTIC_RELEASE_INITIAL_VERSION=${{ steps.get_version.outputs.latest_version }}" >> $GITHUB_ENV
+          fi
+
       - name: Debug - Show existing tags and commits
         run: |
           echo "=== All branches ==="
@@ -117,9 +141,20 @@ jobs:
 
       - name: Run semantic release
         id: semantic
-        run: semantic-release --debug
+        run: |
+          if [ -n "${{ steps.get_version.outputs.latest_tag }}" ]; then
+            echo "Starting semantic-release from existing version ${{ steps.get_version.outputs.latest_version }}"
+            # Create a fake release note for the latest tag so semantic-release recognizes it
+            gh release view "${{ steps.get_version.outputs.latest_tag }}" > /dev/null 2>&1 || \
+            gh release create "${{ steps.get_version.outputs.latest_tag }}" \
+              --title "Release ${{ steps.get_version.outputs.latest_tag }}" \
+              --notes "Previous release (created by semantic-release setup)" \
+              --target "${{ github.sha }}"
+          fi
+          semantic-release --debug
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # --- Build Job ---
   build:
