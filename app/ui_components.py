@@ -86,6 +86,14 @@ class UIComponents:
         )
         filter_container.pack(fill="x", padx=10, pady=5)
 
+        help_button = ttkb.Button(
+            filter_container,
+            text="?",
+            bootstyle="info,outline",
+            command=self.app.show_filter_help,
+        )
+        help_button.place(relx=1.0, x=-5, y=-12, anchor="ne")
+
         filter_container.grid_columnconfigure(0, weight=1)
         filter_container.grid_columnconfigure(1, weight=1)
 
@@ -233,7 +241,13 @@ class UIComponents:
             text="Filenames only",
             variable=self.app.filenames_only,
             bootstyle="info-round-toggle",
-        ).pack(anchor="w")
+        ).pack(side="left", anchor="w", padx=(0, 15))
+        ttkb.Checkbutton(
+            content_frame,
+            text="Show excluded in structure",
+            variable=self.app.show_excluded_in_structure,
+            bootstyle="info-round-toggle",
+        ).pack(side="left", anchor="w")
 
     def _create_output_file_widgets(
         self, parent: ttkb.Frame, tab_data: Dict[str, Any]

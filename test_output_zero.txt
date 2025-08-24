@@ -1,0 +1,10 @@
+--- Project Extraction Report ---
+Timestamp: 2025-08-24T05:19:59.162334
+Selection Mode: INCLUDE checked items
+---
+
+### Project Structure
+
+test_project
+
+### File Contents

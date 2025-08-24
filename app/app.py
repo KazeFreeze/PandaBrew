@@ -44,6 +44,9 @@ class ModernCodeExtractorGUI:
         self.filenames_only = tk.BooleanVar(
             value=self.config.get("filenames_only", False)
         )
+        self.show_excluded_in_structure = tk.BooleanVar(
+            value=self.config.get("show_excluded_in_structure", True)
+        )
         self.tabs: Dict[str, Dict[str, Any]] = {}
         self.notebook: Optional[ttk.Notebook] = None
 
@@ -94,6 +97,23 @@ class ModernCodeExtractorGUI:
         if active_tab:
             # The tree view needs to be cleared and repopulated with the correct checks
             active_tab["tree_view_manager"].refresh_tree()
+
+    def show_filter_help(self) -> None:
+        """Displays a dialog with help text for filter patterns."""
+        help_text = (
+            "Filter patterns use glob-style matching, similar to .gitignore.\n\n"
+            "- `*` matches everything\n"
+            "- `?` matches any single character\n"
+            "- `[seq]` matches any character in seq\n"
+            "- `[!seq]` matches any character not in seq\n\n"
+            "Examples:\n"
+            "- `*.py`: Matches all Python files (e.g., `main.py`).\n"
+            "- `src/*`: Matches all files in the `src` directory.\n"
+            "- `__pycache__/`: Matches the pycache directory.\n"
+            "- `*.log`: Matches all files ending with `.log`.\n\n"
+            "Note: Each line is a separate pattern. Comments start with `#`."
+        )
+        Messagebox.ok(help_text, title="Filter Pattern Help", parent=self.root)
 
     def add_new_tab(
         self,

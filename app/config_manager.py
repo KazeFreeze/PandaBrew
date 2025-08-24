@@ -42,6 +42,7 @@ class ConfigManager:
                     config.setdefault("active_tab_source", None)
                     config.setdefault("global_include_patterns", "")
                     config.setdefault("global_exclude_patterns", "")
+                    config.setdefault("show_excluded_in_structure", True)
                     return config
             else:
                 return self.get_default_config()
@@ -58,6 +59,7 @@ class ConfigManager:
             "selections": {},
             "include_mode": True,
             "filenames_only": False,
+            "show_excluded_in_structure": True,
             "active_tab_source": None,
             "global_include_patterns": "# Examples:\n# *.py\n# src/**/*.js",
             "global_exclude_patterns": "# Examples:\n# .git\n# __pycache__\n# *.log",
@@ -96,6 +98,7 @@ class ConfigManager:
                 "selections": self.app.config.get("selections", {}),
                 "include_mode": self.app.include_mode.get(),
                 "filenames_only": self.app.filenames_only.get(),
+                "show_excluded_in_structure": self.app.show_excluded_in_structure.get(),
                 "active_tab_source": active_tab_source,
                 "global_include_patterns": self.app.global_include_patterns.get(
                     "1.0", "end-1c"

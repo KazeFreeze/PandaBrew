@@ -114,6 +114,7 @@ class ThreadedFileProcessor:
             manual_selections = tree_manager.checked_paths.copy()
             include_mode = self.app.include_mode.get()
             filenames_only = self.app.filenames_only.get()
+            show_excluded = self.app.show_excluded_in_structure.get()
 
             def get_patterns(widget):
                 if not widget:
@@ -137,6 +138,7 @@ class ThreadedFileProcessor:
                 global_include_patterns=global_includes,
                 global_exclude_patterns=global_excludes,
                 filenames_only=filenames_only,
+                show_excluded=show_excluded,
                 cancel_event=self.cancel_event,
                 progress_callback=progress_callback,
             )
@@ -144,19 +146,12 @@ class ThreadedFileProcessor:
             # 4. Handle completion or cancellation
             if self.cancel_event.is_set():
                 self.progress_queue.put({"type": "cancelled"})
-            elif processed_count > 0:
+            else:
                 self.progress_queue.put({
                     "type": "complete",
-                    "title": "Success",
-                    "message": f"Extraction Complete\n\n{processed_count} files processed.\n\nOutput saved to:\n{output}",
-                    "status": f"Extraction complete. {processed_count} files processed.",
-                })
-            else:
-                 self.progress_queue.put({
-                    "type": "complete",
-                    "title": "No Files",
-                    "message": "No files matched the specified filters.",
-                    "status": "No files to process.",
+                    "title": "Extraction Complete",
+                    "message": f"Extraction finished.\n\n{processed_count} files matched the filters and were saved to:\n{output}",
+                    "status": f"Complete. {processed_count} files processed.",
                 })
 
         except Exception as e:

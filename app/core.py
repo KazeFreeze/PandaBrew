@@ -8,7 +8,6 @@ def _matches_pattern(path: Path, patterns: List[str]) -> bool:
     """
     Checks if a path or its name matches any of the gitignore-style patterns.
     """
-    # Using str(path) is important for patterns like 'src/*' to work correctly.
     path_str = str(path)
     for pattern in patterns:
         if fnmatch.fnmatch(path_str, pattern) or fnmatch.fnmatch(path.name, pattern):
@@ -23,20 +22,18 @@ def _write_report_header(f: IO[str], include_mode: bool):
     f.write(f"Selection Mode: {mode} checked items\n")
     f.write("---\n\n")
 
-
 def _write_project_structure(
-    f: IO[str], source_path: Path, files_to_process: List[Path]
+    f: IO[str],
+    source_path: Path,
+    files_to_process: Set[Path],
+    show_excluded: bool,
 ):
-    """Writes a classic ASCII tree structure for the processed files."""
+    """
+    Writes a classic ASCII tree structure.
+    If show_excluded is True, it shows all files and marks excluded ones.
+    Otherwise, it only shows the files that will be processed.
+    """
     f.write("### Project Structure\n\n")
-
-    paths_in_structure = set(files_to_process)
-    for p in files_to_process:
-        parent = p.parent
-        while parent.is_relative_to(source_path) and parent != source_path:
-            paths_in_structure.add(parent)
-            parent = parent.parent
-    paths_in_structure.add(source_path)
 
     def build_tree(current_path, prefix=""):
         try:
@@ -47,12 +44,33 @@ def _write_project_structure(
         except (IOError, PermissionError):
             return
 
-        displayable_children = [p for p in children if p in paths_in_structure]
-
-        for i, child in enumerate(displayable_children):
-            is_last = i == len(displayable_children) - 1
+        for i, child in enumerate(children):
+            is_last = i == (len(children) - 1)
             connector = "└── " if is_last else "├── "
-            f.write(f"{prefix}{connector}{child.name}\n")
+
+            is_in_processed_set = child in files_to_process
+
+            # For a directory, we need to know if it contains any processed files
+            # to decide whether to draw it in the "hide excluded" mode.
+            is_dir_with_processed_children = False
+            if child.is_dir():
+                is_dir_with_processed_children = any(
+                    str(p).startswith(str(child)) for p in files_to_process
+                )
+
+            # If we're hiding excluded items, skip this item if it's not a processed file
+            # and not a directory that contains processed files.
+            if not show_excluded and not is_in_processed_set and not is_dir_with_processed_children:
+                continue
+
+            f.write(f"{prefix}{connector}{child.name}")
+
+            # If the item is not in the final set, mark it and don't recurse.
+            if not is_in_processed_set and not is_dir_with_processed_children:
+                f.write(" [EXCLUDED]\n")
+                continue
+            else:
+                f.write("\n")
 
             if child.is_dir():
                 new_prefix = prefix + ("    " if is_last else "│   ")
@@ -61,7 +79,6 @@ def _write_project_structure(
     f.write(f"{source_path.name}\n")
     build_tree(source_path)
     f.write("\n")
-
 
 def _write_file_contents(
     f: IO[str],
@@ -73,16 +90,12 @@ def _write_file_contents(
     """Writes the contents of the processed files."""
     f.write("### File Contents\n\n")
     total_files = len(files_to_process)
-
     for i, path in enumerate(files_to_process):
-        if cancel_event.is_set():
-            return
-
+        if cancel_event.is_set(): return
         if progress_callback:
             progress = 25 + ((i / total_files) * 75 if total_files > 0 else 75)
             status = f"Writing {i + 1}/{total_files}: {path.name}"
             progress_callback(progress, status)
-
         rel_path = path.relative_to(source_path)
         f.write(f"--- file: {rel_path} ---\n")
         try:
@@ -92,7 +105,6 @@ def _write_file_contents(
             f.write(f"[Error reading file: {read_error}]\n")
         f.write("---\n\n")
 
-
 def generate_report_to_file(
     output_file: str,
     source_path_str: str,
@@ -101,6 +113,7 @@ def generate_report_to_file(
     global_include_patterns: List[str],
     global_exclude_patterns: List[str],
     filenames_only: bool,
+    show_excluded: bool,
     cancel_event: threading.Event,
     progress_callback: Optional[Callable[[float, str], None]] = None,
 ) -> int:
@@ -111,64 +124,38 @@ def generate_report_to_file(
     source_path = Path(source_path_str)
     manual_selections = {Path(p) for p in manual_selections_str}
 
-    if progress_callback:
-        progress_callback(0, "Gathering files...")
-
+    if progress_callback: progress_callback(0, "Gathering files...")
     all_files = {p for p in source_path.rglob("*") if p.is_file()}
-
     if cancel_event.is_set(): return 0
 
-    if progress_callback:
-        progress_callback(5, "Applying manual selections...")
-
-    # Stage 1: Apply Manual Selections
+    if progress_callback: progress_callback(5, "Applying manual selections...")
     if not manual_selections:
         initial_set = set() if include_mode else all_files
     else:
         if include_mode:
-            initial_set = {
-                p for p in all_files
-                if any(str(p).startswith(str(ms)) for ms in manual_selections)
-            }
+            initial_set = {p for p in all_files if any(str(p).startswith(str(ms)) for ms in manual_selections)}
         else:
-            initial_set = {
-                p for p in all_files
-                if not any(str(p).startswith(str(ms)) for ms in manual_selections)
-            }
+            initial_set = {p for p in all_files if not any(str(p).startswith(str(ms)) for ms in manual_selections)}
 
-    if progress_callback:
-        progress_callback(10, "Applying global exclude patterns...")
+    if progress_callback: progress_callback(10, "Applying global exclude patterns...")
+    files_after_excludes = {p for p in initial_set if not _matches_pattern(p.relative_to(source_path), global_exclude_patterns)}
 
-    # Stage 2: Apply Global Excludes
-    files_after_excludes = {
-        p for p in initial_set
-        if not _matches_pattern(p.relative_to(source_path), global_exclude_patterns)
-    }
-
-    if progress_callback:
-        progress_callback(15, "Applying global include patterns...")
-
-    # Stage 3: Apply Global Includes (add back any file that matches)
+    if progress_callback: progress_callback(15, "Applying global include patterns...")
     final_files = files_after_excludes.copy()
     for p in all_files:
         if _matches_pattern(p.relative_to(source_path), global_include_patterns):
             final_files.add(p)
 
     files_to_process = sorted(list(final_files))
-
     if cancel_event.is_set(): return 0
 
     with open(output_file, "w", encoding="utf-8", errors="ignore") as f:
         _write_report_header(f, include_mode)
+        if progress_callback: progress_callback(25, "Writing project structure...")
 
-        if progress_callback:
-            progress_callback(25, "Writing project structure...")
-
-        _write_project_structure(f, source_path, files_to_process)
+        _write_project_structure(f, source_path, set(files_to_process), show_excluded)
 
         if not filenames_only:
-            _write_file_contents(
-                f, files_to_process, source_path, cancel_event, progress_callback
-            )
+            _write_file_contents(f, files_to_process, source_path, cancel_event, progress_callback)
 
     return len(files_to_process)

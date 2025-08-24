@@ -40,6 +40,11 @@ def main():
         action="store_true",
         help="If set, only the project structure and filenames will be extracted."
     )
+    parser.add_argument(
+        "--show-excluded",
+        action="store_true",
+        help="If set, the project structure will include files that were filtered out."
+    )
 
     args = parser.parse_args()
 
@@ -96,6 +101,7 @@ def main():
             global_include_patterns=include_patterns,
             global_exclude_patterns=exclude_patterns,
             filenames_only=args.filenames_only,
+            show_excluded=args.show_excluded,
             cancel_event=cancel_event,
             progress_callback=progress_callback
         )

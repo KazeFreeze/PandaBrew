@@ -19,14 +19,13 @@ PandaBrew is a desktop application and command-line tool built with Python that 
 ## ✨ Key Features
 
 - **Cross-Platform**: Natively supports **Windows** and **Fedora Linux**.
-- **Modern Tabbed GUI**: Manage multiple project extractions in separate tabs, each with its own configuration.
-- **Flexible File Selection**: A classic-style file tree allows you to check files and folders for processing.
-- **Include/Exclude Modes**: Choose to either package _only_ the checked items or package _everything except_ the checked items.
-- **Advanced `.gitignore`-style Filtering**: Use global include/exclude patterns to finely control which files are processed across all projects.
+- **Modern Tabbed GUI**: Manage multiple project extractions in separate tabs.
+- **Flexible File Selection**: Manually check files and folders to include or exclude them.
+- **Advanced `.gitignore`-style Filtering**: Use global include/exclude patterns to finely control which files are processed.
+- **Verbose Structure View**: Optionally display excluded files and folders in the project tree to easily debug your filter patterns.
 - **Command-Line Interface**: A separate CLI for automation and scripting workflows.
 - **Persistent Sessions**: The app remembers your open tabs, file selections, and window settings between sessions.
 - **Responsive UI**: File processing is handled in a separate thread, so the UI never freezes.
-- **Real-time Progress**: A progress bar and status label keep you updated on the extraction process.
 
 ## 📸 Screenshots
 
@@ -57,17 +56,18 @@ You can either download the latest executable for your operating system from the
 
 ## 🖥️ GUI Usage
 
-1.  **Run the application:**
-    - On Windows: `python main.py`
-    - On Linux: `python3 main.py`
-2.  **Select Source**: In a tab, click `Browse` to choose the root directory of the project.
-3.  **Select Files**: Use the checkboxes in the tree view to manually select files and folders.
-4.  **Choose Mode**:
-    - `Include checked`: Only the items you've checked will be in the output.
-    - `Exclude checked`: All items will be in the output _except_ for the ones you've checked.
-5.  **Configure Global Filters (Optional)**: Use the text boxes at the bottom to enter global `.gitignore`-style patterns. These apply to all tabs and override manual selections.
-6.  **Set Output File**: Click `Save As` to specify where the final `.txt` report will be saved.
-7.  **Extract**: Click the `Extract Code` button to begin the process.
+Each tab in the application provides a full set of controls for an extraction task.
+
+1.  **Select Source & Output**: Choose the source directory to process and the final output file.
+2.  **Manual Selection**: Use the checkboxes in the tree view to manually include or exclude files and folders.
+3.  **Selection Mode**:
+    -   `Include checked`: Only manually checked items are processed.
+    -   `Exclude checked`: All items are processed *except* for those you manually check.
+4.  **Output Options**:
+    -   `Filenames only`: The output will only contain the project structure, not the content of the files.
+    -   `Show excluded in structure`: When checked, the project structure in the output file will include filtered files, marked with `[EXCLUDED]`. This is useful for debugging filters.
+5.  **Global Filters**: Use the text boxes at the bottom to enter global `.gitignore`-style patterns. A help button (`?`) is available for syntax examples. These filters are applied after the manual selection.
+6.  **Extract**: Click the `Extract Code` button. All settings, including global filters, are saved automatically when you start an extraction.
 
 ## 🤖 Command-Line Usage
 
