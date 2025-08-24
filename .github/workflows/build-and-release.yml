@@ -46,7 +46,7 @@ jobs:
         run: |
           cat > .releaserc.json << 'EOF'
           {
-            "branches": ["release"],
+            "branches": ["main", "release"],
             "tagFormat": "v${version}",
             "repositoryUrl": "https://github.com/${{ github.repository }}",
             "plugins": [
