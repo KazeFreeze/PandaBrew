@@ -50,13 +50,20 @@ class UIComponents:
         self.create_control_buttons(control_container)
 
     def _create_tab_control_buttons(self, parent: ttkb.Frame) -> None:
-        """Creates the '+' and 'x' buttons for tab management."""
+        """Creates the '+', 'x', and '?' buttons for tab management and help."""
         button_frame = ttkb.Frame(parent)
         button_frame.pack(side="left", anchor="n", fill="y", padx=(2, 0), pady=2)
+
         add_tab_button = ttkb.Button(button_frame, text="+", width=2, command=self.app.add_new_tab, bootstyle="success-outline")
-        add_tab_button.pack(side="top", fill="x")
+        add_tab_button.pack(side="top", fill="x", pady=(0, 4))
+
         close_tab_button = ttkb.Button(button_frame, text="✕", width=2, command=self.app.close_current_tab, bootstyle="danger-outline")
-        close_tab_button.pack(side="top", fill="x", pady=(4, 0))
+        close_tab_button.pack(side="top", fill="x")
+
+        # Add a separator and the help button at the bottom of the stack
+        ttk.Separator(button_frame, orient="horizontal").pack(side="top", fill="x", pady=10)
+        help_button = ttkb.Button(button_frame, text="?", width=2, command=self.app.show_filter_help, bootstyle="info-outline")
+        help_button.pack(side="top", fill="x")
 
     def create_tab_ui(self, parent_tab_frame: ttkb.Frame, tab_data: Dict[str, Any]) -> None:
         """Creates the UI for a single tab's content area."""
@@ -79,22 +86,19 @@ class UIComponents:
         filter_container = ttkb.LabelFrame(parent, text="Per-Tab Filter Patterns")
         filter_container.pack(fill="x")
 
-        help_button = ttkb.Button(filter_container, text="?", bootstyle="info,outline", width=2, command=self.app.show_filter_help)
-        help_button.place(relx=1.0, y=0, x=-30, anchor="ne")
+        text_area_frame = ttkb.Frame(filter_container)
+        text_area_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        text_area_frame.grid_columnconfigure(0, weight=1)
+        text_area_frame.grid_columnconfigure(1, weight=1)
 
-        content_frame = ttkb.Frame(filter_container)
-        content_frame.pack(fill="both", expand=True, padx=5, pady=(10, 5))
-        content_frame.grid_columnconfigure(0, weight=1)
-        content_frame.grid_columnconfigure(1, weight=1)
-
-        exclude_frame = ttkb.Frame(content_frame)
+        exclude_frame = ttkb.Frame(text_area_frame)
         exclude_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
         ttkb.Label(exclude_frame, text="Exclude Patterns").pack(anchor="w", pady=(0, 5))
         exclude_text = ScrolledText(exclude_frame, height=4, font=TERMINAL_FONT, autohide=True, bootstyle="info")
         exclude_text.pack(fill="both", expand=True)
         tab_data["exclude_patterns_text"] = exclude_text
 
-        include_frame = ttkb.Frame(content_frame)
+        include_frame = ttkb.Frame(text_area_frame)
         include_frame.grid(row=0, column=1, sticky="nsew", padx=(2, 0))
         ttkb.Label(include_frame, text="Include Patterns (Overrides Exclude)").pack(anchor="w", pady=(0, 5))
         include_text = ScrolledText(include_frame, height=4, font=TERMINAL_FONT, autohide=True, bootstyle="info")
