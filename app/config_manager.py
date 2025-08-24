@@ -59,8 +59,8 @@ class ConfigManager:
             for t in self.app.tabs.values():
                 if not t["source_path"].get(): continue
 
-                include_text = t["include_patterns_text"].get("1.0", "end-1c") if t["include_patterns_text"] else ""
-                exclude_text = t["exclude_patterns_text"].get("1.0", "end-1c") if t["exclude_patterns_text"] else ""
+                include_text = t["include_patterns_text"].get("1.0", "end-1c") if t.get("include_patterns_text") else ""
+                exclude_text = t["exclude_patterns_text"].get("1.0", "end-1c") if t.get("exclude_patterns_text") else ""
 
                 open_tabs_info.append({
                     "source": t["source_path"].get(),

@@ -86,15 +86,14 @@ def test_filenames_only(test_project: Path, tmp_path: Path):
 def test_show_excluded_structure(test_project: Path, tmp_path: Path):
     """Test that the structure shows excluded files when the flag is set."""
     output_file = tmp_path / "output.txt"
-    # Exclude all .md and .py files
     exclude_patterns = ["*.md", "*.py"]
     report = run_core_logic(test_project, output_file, include_mode=False, exclude_patterns=exclude_patterns, show_excluded=True)
 
     assert "main.py [EXCLUDED]" in report
     assert "utils.py [EXCLUDED]" in report
     assert "guide.md [EXCLUDED]" in report
-    assert "LICENSE" in report # Not excluded
-    assert ".secrets" in report # Not excluded
+    assert "LICENSE" in report
+    assert ".secrets" in report
 
 def test_hide_excluded_structure(test_project: Path, tmp_path: Path):
     """Test that the structure does not show excluded files by default."""
@@ -118,7 +117,7 @@ def test_filter_precedence_pipeline(test_project: Path, tmp_path: Path):
     output_file = tmp_path / "output.txt"
     manual_selections = {str(test_project / "src")}
     exclude_patterns = ["*.py"]
-    include_patterns = ["src/main.py"] # Path relative to source_path
+    include_patterns = ["src/main.py"]
 
     report = run_core_logic(
         test_project,
@@ -128,11 +127,8 @@ def test_filter_precedence_pipeline(test_project: Path, tmp_path: Path):
         include_patterns=include_patterns
     )
 
-    # Only main.py should be in the final report
     assert "main.py" in report
     assert "utils.py" not in report
     assert "guide.md" not in report
-
-    # Check content to be sure
     assert "print('hello')" in report
     assert "def helper(): pass" not in report

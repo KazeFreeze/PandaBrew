@@ -25,20 +25,14 @@ def _write_project_structure(
     show_excluded: bool,
 ):
     f.write("### Project Structure\n\n")
-
     def build_tree(current_path, prefix=""):
         try:
-            children = sorted(
-                list(current_path.iterdir()),
-                key=lambda p: (p.is_file(), p.name.lower()),
-            )
+            children = sorted(list(current_path.iterdir()), key=lambda p: (p.is_file(), p.name.lower()))
         except (IOError, PermissionError):
             return
-
         for i, child in enumerate(children):
             is_last = i == (len(children) - 1)
             connector = "└── " if is_last else "├── "
-
             is_processed = child in files_to_process
             is_parent_of_processed = False
             if child.is_dir():
@@ -58,7 +52,6 @@ def _write_project_structure(
                 if show_excluded or is_parent_of_processed:
                     new_prefix = prefix + ("    " if is_last else "│   ")
                     build_tree(child, new_prefix)
-
     f.write(f"{source_path.name}\n")
     build_tree(source_path)
     f.write("\n")

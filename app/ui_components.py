@@ -63,16 +63,13 @@ class UIComponents:
         main_container = ttkb.Frame(parent_tab_frame, padding=(5, 5))
         main_container.pack(fill="both", expand=True)
 
-        # --- Top Section: Directory and Options ---
         options_container = ttkb.LabelFrame(main_container, text="Directory & Options")
         options_container.pack(fill="x", pady=(0, 10))
         self.create_path_selection(options_container, tab_data)
         self.create_options_section(options_container)
 
-        # --- Middle Section: Per-Tab Filters ---
         self._create_filter_settings(main_container, tab_data)
 
-        # --- Bottom Section: Project Structure ---
         tree_container = ttkb.LabelFrame(main_container, text="Project Structure")
         tree_container.pack(fill="both", expand=True, pady=(10,0))
         self.create_tree_view(tree_container, tab_data)
@@ -82,25 +79,27 @@ class UIComponents:
         filter_container = ttkb.LabelFrame(parent, text="Per-Tab Filter Patterns")
         filter_container.pack(fill="x")
 
-        help_button = ttkb.Button(filter_container, text="?", bootstyle="info,outline", command=self.app.show_filter_help)
-        help_button.place(relx=1.0, x=-5, y=-12, anchor="ne")
+        title_frame = ttkb.Frame(filter_container)
+        title_frame.pack(fill="x", padx=5, pady=0, anchor="n")
+        help_button = ttkb.Button(title_frame, text="? Syntax Help", bootstyle="link", command=self.app.show_filter_help)
+        help_button.pack(side="right")
 
-        filter_container.grid_columnconfigure(0, weight=1)
-        filter_container.grid_columnconfigure(1, weight=1)
+        text_area_frame = ttkb.Frame(filter_container)
+        text_area_frame.pack(fill="x", expand=True, padx=5, pady=5)
+        text_area_frame.grid_columnconfigure(0, weight=1)
+        text_area_frame.grid_columnconfigure(1, weight=1)
 
-        # --- Exclude Patterns ---
-        exclude_frame = ttkb.Frame(filter_container, padding=5)
-        exclude_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
-        ttkb.Label(exclude_frame, text="Exclude Patterns (one per line)").pack(anchor="w", pady=(0, 5))
-        exclude_text = ScrolledText(exclude_frame, height=5, font=TERMINAL_FONT, autohide=True, bootstyle="info")
+        exclude_frame = ttkb.Frame(text_area_frame)
+        exclude_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
+        ttkb.Label(exclude_frame, text="Exclude Patterns").pack(anchor="w", pady=(0, 5))
+        exclude_text = ScrolledText(exclude_frame, height=4, font=TERMINAL_FONT, autohide=True, bootstyle="info")
         exclude_text.pack(fill="both", expand=True)
         tab_data["exclude_patterns_text"] = exclude_text
 
-        # --- Include Patterns ---
-        include_frame = ttkb.Frame(filter_container, padding=5)
-        include_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
-        ttkb.Label(include_frame, text="Include Patterns (one per line, overrides exclude)").pack(anchor="w", pady=(0, 5))
-        include_text = ScrolledText(include_frame, height=5, font=TERMINAL_FONT, autohide=True, bootstyle="info")
+        include_frame = ttkb.Frame(text_area_frame)
+        include_frame.grid(row=0, column=1, sticky="nsew", padx=(2, 0))
+        ttkb.Label(include_frame, text="Include Patterns (Overrides Exclude)").pack(anchor="w", pady=(0, 5))
+        include_text = ScrolledText(include_frame, height=4, font=TERMINAL_FONT, autohide=True, bootstyle="info")
         include_text.pack(fill="both", expand=True)
         tab_data["include_patterns_text"] = include_text
 
@@ -125,7 +124,6 @@ class UIComponents:
         options_frame = ttkb.Frame(parent, padding=5)
         options_frame.pack(fill="x", expand=True)
 
-        # --- Selection Mode ---
         mode_frame = ttkb.Frame(options_frame)
         mode_frame.pack(side="left", padx=(0, 30))
         ttkb.Label(mode_frame, text="Selection Mode:", font=TERMINAL_FONT_BOLD).pack(anchor="w")
@@ -134,7 +132,6 @@ class UIComponents:
         ttkb.Radiobutton(radio_frame, text="Include checked", variable=self.app.include_mode, value=True, bootstyle="info").pack(side="left", padx=(0, 10))
         ttkb.Radiobutton(radio_frame, text="Exclude checked", variable=self.app.include_mode, value=False, bootstyle="info").pack(side="left")
 
-        # --- Output Content ---
         output_options_frame = ttkb.Frame(options_frame)
         output_options_frame.pack(side="left")
         ttkb.Label(output_options_frame, text="Output Options:", font=TERMINAL_FONT_BOLD).pack(anchor="w")

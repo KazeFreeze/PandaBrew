@@ -75,7 +75,6 @@ class ModernCodeExtractorGUI:
             "3. **Include Patterns**: Files matching these patterns are **added back** to the set, "
             "overriding any previous exclusions."
         )
-
         syntax_explanation = (
             "\n\n**Pattern Syntax**\n"
             "Patterns use glob-style matching, similar to .gitignore.\n\n"
@@ -88,7 +87,6 @@ class ModernCodeExtractorGUI:
             "- `src/*`: Matches all files in the `src` directory.\n"
             "- `__pycache__/`: Matches the pycache directory.\n"
         )
-
         help_text = pipeline_explanation + syntax_explanation
         Messagebox.ok(help_text, title="Filter Help", parent=self.root)
 
@@ -118,7 +116,6 @@ class ModernCodeExtractorGUI:
         self.tabs[tab_id] = tab_data
         self.ui_components.create_tab_ui(content_frame, tab_data)
 
-        # Populate the filter text widgets after they've been created
         if tab_data["include_patterns_text"]:
             tab_data["include_patterns_text"].insert("1.0", include_patterns)
         if tab_data["exclude_patterns_text"]:
@@ -161,11 +158,9 @@ class ModernCodeExtractorGUI:
         except (KeyError, tk.TclError): return None
 
     def on_tab_change(self, event: Optional[tk.Event] = None) -> None:
-        """Handles events when the active tab changes."""
         self.refresh_active_tab_ui()
 
     def refresh_active_tab_ui(self) -> None:
-        """Updates the UI based on the currently active tab."""
         active_tab = self.get_active_tab()
         if active_tab and active_tab["source_path"].get():
             self.root.title(f"PandaBrew - {Path(active_tab['source_path'].get()).name}")
@@ -174,12 +169,10 @@ class ModernCodeExtractorGUI:
         self._refresh_canvas_style_debounced()
 
     def _refresh_canvas_style_debounced(self) -> None:
-        """Refreshes the active canvas's background color after a short delay."""
         if self._after_id: self.root.after_cancel(self._after_id)
         self._after_id = self.root.after(15, self._perform_canvas_refresh)
 
     def _perform_canvas_refresh(self) -> None:
-        """The actual logic to refresh the canvas style."""
         self._after_id = None
         active_tab = self.get_active_tab()
         if not (active_tab and active_tab.get("canvas")): return
@@ -190,38 +183,31 @@ class ModernCodeExtractorGUI:
         except tk.TclError: pass
 
     def browse_source(self) -> None:
-        """Opens a dialog to select the source directory for the active tab."""
         active_tab = self.get_active_tab()
         if not active_tab:
             self.add_new_tab(select_tab=True)
             active_tab = self.get_active_tab()
             if not active_tab: return
-
         folder = filedialog.askdirectory(title="Select Source Directory")
         if not folder: return
-
         for tdata in self.tabs.values():
             if tdata["source_path"].get() == folder:
                 if self.notebook: self.notebook.select(tdata["frame"])
                 return
-
         active_tab["source_path"].set(folder)
         if self.notebook: self.notebook.tab(active_tab["frame"], text=Path(folder).name)
         self.on_tab_change()
         active_tab["tree_view_manager"].refresh_tree()
 
     def browse_output(self) -> None:
-        """Opens a dialog to select the output file path for the active tab."""
         active_tab = self.get_active_tab()
         if not active_tab: return
         file = filedialog.asksaveasfilename(title="Save As", defaultextension=".txt", filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
         if file: active_tab["output_path"].set(file)
 
     def load_tabs_from_config(self) -> None:
-        """Loads the tabs that were open during the last session."""
         open_tabs = self.config.get("open_tabs", [])
         active_tab_source = self.config.get("active_tab_source")
-
         if open_tabs and isinstance(open_tabs, list):
             for tab_info in open_tabs:
                 if isinstance(tab_info, dict):
@@ -243,7 +229,6 @@ class ModernCodeExtractorGUI:
         self.refresh_active_tab_ui()
 
     def set_ui_processing_state(self, is_processing: bool) -> None:
-        """Toggles the state of UI controls during processing."""
         if is_processing:
             if self.extract_btn: self.extract_btn.config(state="disabled")
             if self.cancel_btn: self.cancel_btn.pack(side="left", padx=(0, 10))
@@ -252,7 +237,6 @@ class ModernCodeExtractorGUI:
             if self.cancel_btn: self.cancel_btn.pack_forget()
 
     def on_closing(self) -> None:
-        """Saves configuration on exit and cancels any running process."""
         if self.file_processor.is_processing:
             if Messagebox.okcancel("Processing in Progress", "An extraction is currently running. Are you sure you want to quit?", parent=self.root) == "Cancel":
                 return
