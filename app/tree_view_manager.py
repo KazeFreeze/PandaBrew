@@ -1,15 +1,12 @@
 import tkinter as tk
 import ttkbootstrap as ttkb
 from pathlib import Path
-from utils.helpers import format_file_size
 from typing import Optional, Dict, Any, Set, List
 from functools import partial
 
 # Define consistent fonts for the terminal theme
 TERMINAL_FONT = ("Cascadia Code", 9)
-TREE_FONT = ("Consolas", 10)
 TREE_FONT_BOLD = ("Consolas", 10, "bold")
-ITALIC_FONT = ("Cascadia Code", 8, "italic")
 PAGE_SIZE = 100  # Number of items to load at a time
 
 class TreeItem:
@@ -24,7 +21,7 @@ class TreeItem:
         self.child_paths: Optional[List[Path]] = None
 
 class TreeViewManager:
-    """Manages the file and directory tree view for a single tab."""
+    """Manages the file and directory tree view for a single tab with lazy loading."""
     def __init__(self, app_instance, tab_id: str):
         self.app = app_instance
         self.tab_id = tab_id
@@ -46,7 +43,6 @@ class TreeViewManager:
         for path in paths_to_render:
             self.create_tree_item_widget(path, parent_item.container)
 
-        # If there are more items to load, add a "Load More" button
         if end < len(parent_item.child_paths):
             load_more_button = ttkb.Button(
                 parent_item.container,
@@ -57,12 +53,10 @@ class TreeViewManager:
             load_more_button.pack(fill="x", padx=20, pady=5)
 
     def _load_more(self, parent_item: TreeItem, button_to_destroy: ttkb.Button, new_offset: int):
-        """Called by the 'Load More' button to render the next page of items."""
         button_to_destroy.destroy()
         self._populate_node_children(parent_item, offset=new_offset)
 
     def create_tree_item_widget(self, path: Path, parent_widget: ttkb.Frame):
-        """Creates the UI widget for a single item in the tree."""
         path_str = str(path)
         if path_str in self.tree_items and self.tree_items[path_str].widget:
             return
@@ -70,7 +64,6 @@ class TreeViewManager:
         item_frame = ttkb.Frame(parent_widget)
         item_frame.pack(fill="x")
 
-        # Calculate indentation based on depth
         tab_data = self.get_tab_data()
         source_path = Path(tab_data["source_path"].get()) if tab_data and tab_data["source_path"].get() else None
         depth = len(path.parts) - len(source_path.parts) if source_path else 0
@@ -89,7 +82,7 @@ class TreeViewManager:
         tree_item.expander_label = expander
 
         tree_item.checked.set(path_str in self.checked_paths)
-        chk = ttkb.Checkbutton(item_frame, variable=tree_item.checked, command=lambda p=path_str, v=tree_item.checked: self.on_item_check(p, v), bootstyle="info-square-toggle")
+        chk = ttkb.Checkbutton(item_frame, variable=tree_item.checked, command=lambda p=path_str: self.on_item_check(p), bootstyle="info-square-toggle")
         chk.pack(side="left")
         self.tree_items[path_str] = tree_item
 
@@ -104,13 +97,13 @@ class TreeViewManager:
             tab_data["bind_scroll_handler"](item_frame)
 
     def toggle_expand(self, path: Path):
-        """Expands or collapses a directory, loading its contents on first expansion."""
         path_str = str(path)
         tree_item = self.tree_items.get(path_str)
         if not tree_item or not tree_item.expander_label: return
 
         if not tree_item.expanded:
             tree_item.expander_label.config(text="[-]")
+            tree_item.expanded = True
             if not tree_item.container:
                 tree_item.container = ttkb.Frame(tree_item.widget.master)
                 tree_item.container.pack(fill="x", after=tree_item.widget)
@@ -120,16 +113,15 @@ class TreeViewManager:
                     self._populate_node_children(tree_item, offset=0)
                 except Exception as e:
                     print(f"Error expanding {path}: {e}")
-            tree_item.expanded = True
         else:
             tree_item.expander_label.config(text="[+]")
-            if tree_item.container:
-                for child in tree_item.container.winfo_children():
-                    child.destroy()
             tree_item.expanded = False
+            if tree_item.container:
+                tree_item.container.destroy()
+                tree_item.container = None
 
-    def on_item_check(self, path_str: str, var: tk.BooleanVar):
-        is_checked = var.get()
+    def on_item_check(self, path_str: str):
+        is_checked = self.tree_items[path_str].checked.get()
         if is_checked:
             self.checked_paths.add(path_str)
         else:
