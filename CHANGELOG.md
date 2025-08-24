@@ -1,0 +1,45 @@
+# 1.0.0 (2025-08-24)
+
+
+### Bug Fixes
+
+* add dependencies for building Arch64 ([ce78e67](https://github.com/KazeFreeze/PandaBrew/commit/ce78e6734415e85d65b004588ebd00081724e0cc))
+* add flag to install hidden dependencies ([a03f66d](https://github.com/KazeFreeze/PandaBrew/commit/a03f66d9719b31ab3529f237429110d4d0047af0))
+* add tkinter install in container for github actions ([d153cda](https://github.com/KazeFreeze/PandaBrew/commit/d153cdaed0e27e95ebb8511cda9ce1cd62d27612))
+* Enhance checkbox logic to update descendants and parents for consistent state management ([52cd709](https://github.com/KazeFreeze/PandaBrew/commit/52cd7091bddcdb98e4f14c93155630e8a34f42a6))
+* fixed bugs, added README ([6511aa6](https://github.com/KazeFreeze/PandaBrew/commit/6511aa6eb76258be8c0de56e74fd22a01fc958a0))
+* Grant write permissions to release workflow ([558f7e5](https://github.com/KazeFreeze/PandaBrew/commit/558f7e5d3c89423251905ea932bf922fd586767d))
+* Implement mouse wheel scrolling for canvas and bind it to child widgets ([2e052b4](https://github.com/KazeFreeze/PandaBrew/commit/2e052b48dee0a36525fa87fa2d4bdc395f782710))
+* Improve file processing logic and UI responsiveness by refining progress updates and fixing exclusion logic ([d22a785](https://github.com/KazeFreeze/PandaBrew/commit/d22a785a7d23ec54845275f7f62a3b1d7320b897))
+* separate windows packaging action ([2ca37bd](https://github.com/KazeFreeze/PandaBrew/commit/2ca37bda8fdca9e20fc8711e5f52706291563663))
+* skip QEMU on windows machine ([8c0f66f](https://github.com/KazeFreeze/PandaBrew/commit/8c0f66f22bb890a1fcffba0f1f556453abdf5f77))
+* Update badge links in README.md to reflect correct repository paths ([117dadf](https://github.com/KazeFreeze/PandaBrew/commit/117dadfa9fef61b3e3a7d04d25d0e5ce4a5343dc))
+* Update release package name from Code-Extractor-Pro to PandaBrew ([4207ad7](https://github.com/KazeFreeze/PandaBrew/commit/4207ad74086b142cde3b7734dc9149741b0bbd2b))
+
+
+### Features
+
+* add basic linux support ([08a0ef7](https://github.com/KazeFreeze/PandaBrew/commit/08a0ef75d30b19ecb671be3f90fbda5c8fec6f46))
+* add builds for Arch64 ([776899e](https://github.com/KazeFreeze/PandaBrew/commit/776899ebd606b8b2845ec071fa2b411dda601717))
+* Add GitHub Actions workflow for building and releasing the executable ([5634b05](https://github.com/KazeFreeze/PandaBrew/commit/5634b052407008cd79d8ce009f3cd528194508e2))
+* cross platform cli, pattern matching, performance ([#1](https://github.com/KazeFreeze/PandaBrew/issues/1)) ([cc2846a](https://github.com/KazeFreeze/PandaBrew/commit/cc2846a9e8569a927de028df2aa06b8c74a188f4))
+* Enhance file processing logic and improve error handling in FileProcessor ([8434319](https://github.com/KazeFreeze/PandaBrew/commit/843431911f811a9b4f5ee5b033d4f10efa0d5bdc))
+* enhance functionality and improve performance ([d7b9606](https://github.com/KazeFreeze/PandaBrew/commit/d7b9606f3ed34813b5b98055965c738287b0be74))
+* Enhance tab management and UI interactions in Modern Code Extractor Pro ([2024270](https://github.com/KazeFreeze/PandaBrew/commit/20242705c5792982208b1df321bcd1537b4e8311))
+* Enhance type hinting across multiple modules for improved code clarity and maintainability ([a817ec3](https://github.com/KazeFreeze/PandaBrew/commit/a817ec34ec73d9897fc2dbbcaa42e53159d5c7f7))
+* Enhance UI styling for LabelFrame and Notebook tabs, improving visual integration and consistency ([cd79305](https://github.com/KazeFreeze/PandaBrew/commit/cd79305357027a252c6d63b50df272aca5bc0303))
+* Enhance UI with consistent theming and improved tab management, supporting per-tab output paths ([6f01ef2](https://github.com/KazeFreeze/PandaBrew/commit/6f01ef2651a1be0c9c1b0312e99e26caa3ffccbf))
+* Implement centered success dialog for file processing completion ([cd8819e](https://github.com/KazeFreeze/PandaBrew/commit/cd8819e1807c98f5f6766b93e511c482d1b1710f))
+* Implement Modern Code Extractor Pro GUI application ([fa8d587](https://github.com/KazeFreeze/PandaBrew/commit/fa8d5876b9117f51f6e5bcd723f01207c14ab05b))
+* Implement tabbed interface for Code Extractor Pro ([c3020ff](https://github.com/KazeFreeze/PandaBrew/commit/c3020ffd715d1d244f160b2d1f106e15da4faf5a))
+* Implement UI enhancements for tab management and canvas rendering, including debounced refresh and active tab tracking ([c676570](https://github.com/KazeFreeze/PandaBrew/commit/c67657086794f5053a5c61848d2c0690c29a4aa8))
+* improve functionality and performance ([a9f604a](https://github.com/KazeFreeze/PandaBrew/commit/a9f604a9d7b30459aed53faf7d66b5667cbfa666))
+* Improve success dialog and file processing feedback with progress updates ([184087f](https://github.com/KazeFreeze/PandaBrew/commit/184087fc4fa552dbc19bfd51bfcf1547b270fe81))
+* Migrate to threaded file processing and enhance UI controls for better user experience ([2bc77fa](https://github.com/KazeFreeze/PandaBrew/commit/2bc77fa1c7482d00129a40956041eb343c39bb99))
+* Optimize file processing logic and enhance report formatting ([59169a1](https://github.com/KazeFreeze/PandaBrew/commit/59169a1ace2583d43b9c47f23abce37e68614abb))
+* Refactor application to use ttkbootstrap for modern UI components and improve file processing logic ([0bf67bf](https://github.com/KazeFreeze/PandaBrew/commit/0bf67bf583018ece06e707f6631628e1cacb5228))
+* refactor code structure for improved readability and maintainability ([5a9911d](https://github.com/KazeFreeze/PandaBrew/commit/5a9911d7f51cdbb3041ec1a3fc32bdc90624841a))
+* Refactor configuration management and enhance tree view item handling for improved state persistence ([7235fe1](https://github.com/KazeFreeze/PandaBrew/commit/7235fe1d86b5065ec5b21ce1c96bacffcacbf6ef))
+* Refactor tab management and enhance UI components for improved user experience ([28c05f8](https://github.com/KazeFreeze/PandaBrew/commit/28c05f832f3cf7edafab40f105dd96158c52d0d8))
+* Rename application from Code Extractor Pro to PandaBrew and update related configurations ([0d165bc](https://github.com/KazeFreeze/PandaBrew/commit/0d165bc922bb67ca93b97536f94ffb6acc41f9a3))
+* Update README.md to reflect new application name ([e75bf70](https://github.com/KazeFreeze/PandaBrew/commit/e75bf70d0ea9d2287da027843fd51d0995f22112))
