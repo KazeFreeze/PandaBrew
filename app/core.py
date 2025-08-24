@@ -94,30 +94,48 @@ def generate_report_to_file(
 ) -> int:
     source_path = Path(source_path_str)
     manual_selections = {Path(p) for p in manual_selections_str}
-    if progress_callback: progress_callback(0, "Gathering files...")
-    all_files = {p for p in source_path.rglob("*") if p.is_file()}
-    if cancel_event.is_set(): return 0
-    if progress_callback: progress_callback(5, "Applying manual selections...")
-    if not manual_selections:
-        initial_set = set() if include_mode else all_files
-    else:
-        if include_mode:
-            initial_set = {p for p in all_files if any(str(p).startswith(str(ms)) for ms in manual_selections)}
+    if progress_callback: progress_callback(0, "Gathering and filtering files...")
+
+    files_to_process = set()
+
+    all_paths = list(source_path.rglob("*"))
+    total_paths = len(all_paths)
+
+    for i, path in enumerate(all_paths):
+        if cancel_event.is_set(): return 0
+        if not path.is_file(): continue
+
+        if progress_callback and i % 50 == 0:
+            progress = (i / total_paths) * 20 if total_paths > 0 else 0
+            progress_callback(progress, f"Filtering... ({i}/{total_paths})")
+
+        is_manually_in: bool
+        if not manual_selections:
+            is_manually_in = not include_mode
         else:
-            initial_set = {p for p in all_files if not any(str(p).startswith(str(ms)) for ms in manual_selections)}
-    if progress_callback: progress_callback(10, "Applying exclude patterns...")
-    files_after_excludes = {p for p in initial_set if not _matches_pattern(p.relative_to(source_path), exclude_patterns)}
-    if progress_callback: progress_callback(15, "Applying include patterns...")
-    final_files = files_after_excludes.copy()
-    for p in all_files:
-        if _matches_pattern(p.relative_to(source_path), include_patterns):
-            final_files.add(p)
-    files_to_process = sorted(list(final_files))
+            if include_mode:
+                is_manually_in = any(str(path).startswith(str(ms)) for ms in manual_selections)
+            else:
+                is_manually_in = not any(str(path).startswith(str(ms)) for ms in manual_selections)
+
+        relative_path = path.relative_to(source_path)
+        is_excluded = _matches_pattern(relative_path, exclude_patterns)
+        is_included = _matches_pattern(relative_path, include_patterns)
+
+        if is_included:
+            files_to_process.add(path)
+        elif is_manually_in and not is_excluded:
+            files_to_process.add(path)
+
+    files_to_process_sorted = sorted(list(files_to_process))
     if cancel_event.is_set(): return 0
+
     with open(output_file, "w", encoding="utf-8", errors="ignore") as f:
         _write_report_header(f, include_mode)
         if progress_callback: progress_callback(25, "Writing project structure...")
-        _write_project_structure(f, source_path, set(files_to_process), show_excluded)
+
+        _write_project_structure(f, source_path, files_to_process, show_excluded)
+
         if not filenames_only:
-            _write_file_contents(f, files_to_process, source_path, cancel_event, progress_callback)
-    return len(files_to_process)
+            _write_file_contents(f, files_to_process_sorted, source_path, cancel_event, progress_callback)
+    return len(files_to_process_sorted)

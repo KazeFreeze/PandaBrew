@@ -120,6 +120,12 @@ class TreeViewManager:
                 tree_item.container.destroy()
                 tree_item.container = None
 
+            # This is the fix: remove all descendant items from the tracking dictionary
+            self.tree_items = {
+                p: i for p, i in self.tree_items.items()
+                if not Path(p).is_relative_to(path) or p == path_str
+            }
+
     def on_item_check(self, path_str: str):
         is_checked = self.tree_items[path_str].checked.get()
         if is_checked:
