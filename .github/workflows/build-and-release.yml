@@ -1,4 +1,6 @@
-name: Test, Build, and Release
+# .github/workflows/build-and-release.yml
+
+name: Build and Release Executable
 
 # --- Trigger ---
 # This workflow runs on push to release branch (for semantic release) and on manual dispatch
@@ -35,7 +37,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
+          node-version: "lts/*"
 
       - name: Install semantic-release
         run: |
@@ -46,8 +48,20 @@ jobs:
           cat > .releaserc.json << 'EOF'
           {
             "branches": ["release"],
+            "tagFormat": "v${version}",
+            "repositoryUrl": "https://github.com/${{ github.repository }}",
             "plugins": [
-              "@semantic-release/commit-analyzer",
+              [
+                "@semantic-release/commit-analyzer",
+                {
+                  "releaseRules": [
+                    {"type": "feat", "release": "minor"},
+                    {"type": "fix", "release": "patch"},
+                    {"type": "perf", "release": "patch"},
+                    {"breaking": true, "release": "major"}
+                  ]
+                }
+              ],
               "@semantic-release/release-notes-generator",
               [
                 "@semantic-release/changelog",
@@ -72,9 +86,25 @@ jobs:
           }
           EOF
 
+      - name: Debug - Show existing tags and commits
+        run: |
+          echo "=== Existing tags ==="
+          git tag --sort=-version:refname | head -10
+          echo "=== Latest tag ==="
+          git describe --tags --abbrev=0 2>/dev/null || echo "No tags found"
+          echo "=== Recent commits since latest tag ==="
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
+          if [ -n "$LATEST_TAG" ]; then
+            echo "Commits since $LATEST_TAG:"
+            git log --oneline "${LATEST_TAG}..HEAD" || echo "No commits since latest tag"
+          else
+            echo "No previous tags found, showing recent commits:"
+            git log --oneline -10
+          fi
+
       - name: Run semantic release
         id: semantic
-        run: semantic-release
+        run: semantic-release --debug
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -83,7 +113,7 @@ jobs:
     name: Build Executables
     needs: semantic-release
     if: needs.semantic-release.outputs.new-release-published == 'true'
-    
+
     # --- Strategy Matrix ---
     # Define the different operating systems, architectures, and corresponding build targets.
     strategy:
@@ -101,23 +131,35 @@ jobs:
             build_target: linux-aarch64
             asset_name: PandaBrew-linux-aarch64
             executable_path: dist/PandaBrew
+
+    # --- Runner ---
     runs-on: ${{ matrix.os }}
+
     steps:
+      # --- 1. Checkout Code ---
+      # This step checks out a copy of your repository onto the runner.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.semantic-release.outputs.new-release-git-tag }}
 
+      # --- 2. Set up QEMU for ARM emulation ---
+      # This is necessary to build for aarch64 on an x86_64 runner.
+      # It will only run on the Linux-based runners.
       - name: Set up QEMU
         if: matrix.os == 'ubuntu-latest'
         uses: docker/setup-qemu-action@v3
 
+      # --- 3. Set up Python (for Windows build) ---
+      # This step installs a specific version of Python on the host runner.
+      # It's primarily for the Windows build which doesn't use Docker.
       - name: Set up Python
         if: matrix.build_target == 'windows'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # --- 4. Install Dependencies (Windows) ---
       - name: Install Windows dependencies
         if: matrix.build_target == 'windows'
         run: |
@@ -125,7 +167,8 @@ jobs:
           pip install pyinstaller
           pip install -r requirements.txt
 
-      - name: Build Windows executable
+      # --- 5. Build Executable (Windows) ---
+      - name: Build Windows executable with PyInstaller
         if: matrix.build_target == 'windows'
         run: |
           pyinstaller `
@@ -135,25 +178,52 @@ jobs:
             --icon "pandabrew.ico" `
             main.py
 
-      - name: Build Fedora (x86_64) executable
+      # --- 6. Build Executable (Fedora x86_64) ---
+      # We run this on an ubuntu runner but execute the build inside a Fedora Docker container.
+      - name: Build Fedora (x86_64) executable with PyInstaller
         if: matrix.build_target == 'fedora-x86_64'
         run: |
           docker run --rm -v "${{ github.workspace }}":/app -w /app fedora:latest bash -c " \
+            echo 'Installing build dependencies in Fedora container...' && \
             dnf install -y python3-pip python3-devel gcc zip python3-tkinter && \
+            echo 'Installing application requirements...' && \
             pip3 install --no-cache-dir -r requirements.txt && \
+            echo 'Installing PyInstaller...' && \
             pip3 install --no-cache-dir pyinstaller && \
-            pyinstaller --name PandaBrew --onefile --windowed --icon pandabrew.ico --hidden-import=PIL._tkinter_finder main.py"
+            echo 'Building executable...' && \
+            pyinstaller \
+              --name PandaBrew \
+              --onefile \
+              --windowed \
+              --icon pandabrew.ico \
+              --hidden-import=PIL._tkinter_finder \
+              main.py \
+          "
 
-      - name: Build Linux (aarch64) executable
+      # --- 7. Build Executable (Linux aarch64) ---
+      # This runs on an ubuntu runner but builds inside a Debian aarch64 container using QEMU.
+      - name: Build Linux (aarch64) executable with PyInstaller
         if: matrix.build_target == 'linux-aarch64'
         run: |
           docker run --rm --platform linux/arm64 -v "${{ github.workspace }}":/app -w /app arm64v8/debian:bullseye bash -c " \
+            echo 'Updating package list in Debian aarch64 container...' && \
             apt-get update && \
+            echo 'Installing build dependencies...' && \
             apt-get install -y --no-install-recommends python3 python3-pip python3-tk python3-dev gcc zip && \
+            echo 'Installing application requirements...' && \
             pip3 install --no-cache-dir -r requirements.txt && \
+            echo 'Installing PyInstaller...' && \
             pip3 install --no-cache-dir pyinstaller && \
-            pyinstaller --name PandaBrew --onefile --windowed --icon pandabrew.ico --hidden-import=PIL._tkinter_finder main.py"
-      
+            echo 'Building executable...' && \
+            pyinstaller \
+              --name PandaBrew \
+              --onefile \
+              --windowed \
+              --icon pandabrew.ico \
+              --hidden-import=PIL._tkinter_finder \
+              main.py \
+          "
+
       # --- 8. Rename Executable for Upload ---
       - name: Rename executable for upload
         run: |
@@ -167,7 +237,7 @@ jobs:
             chmod +x "${{ matrix.asset_name }}"
           fi
         shell: bash
-      
+
       # --- 9. Upload Assets to Release ---
       # This step uploads the zipped executable as an asset to the existing release.
       - name: Upload Release Asset
