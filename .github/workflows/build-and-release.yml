@@ -3,19 +3,89 @@
 name: Build and Release Executable
 
 # --- Trigger ---
-# This workflow runs when a new tag matching the pattern "v*.*.*" is pushed.
+# This workflow runs on push to release branch (for semantic release) and on manual dispatch
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches:
+      - release
+  workflow_dispatch:
 
 # --- Permissions ---
-# This block grants the GITHUB_TOKEN the necessary permission to create a release.
+# Enhanced permissions for semantic release
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
 
 jobs:
+  # --- Semantic Release Job ---
+  semantic-release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    outputs:
+      new-release-published: ${{ steps.semantic.outputs.new-release-published }}
+      new-release-version: ${{ steps.semantic.outputs.new-release-version }}
+      new-release-git-tag: ${{ steps.semantic.outputs.new-release-git-tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Install semantic-release
+        run: |
+          npm install -g semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/github
+
+      - name: Create .releaserc.json
+        run: |
+          cat > .releaserc.json << 'EOF'
+          {
+            "branches": ["release"],
+            "plugins": [
+              "@semantic-release/commit-analyzer",
+              "@semantic-release/release-notes-generator",
+              [
+                "@semantic-release/changelog",
+                {
+                  "changelogFile": "CHANGELOG.md"
+                }
+              ],
+              [
+                "@semantic-release/git",
+                {
+                  "assets": ["CHANGELOG.md"],
+                  "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+                }
+              ],
+              [
+                "@semantic-release/github",
+                {
+                  "assets": []
+                }
+              ]
+            ]
+          }
+          EOF
+
+      - name: Run semantic release
+        id: semantic
+        run: semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # --- Build Job ---
   build:
+    name: Build Executables
+    needs: semantic-release
+    if: needs.semantic-release.outputs.new-release-published == 'true'
+    
     # --- Strategy Matrix ---
     # Define the different operating systems, architectures, and corresponding build targets.
     strategy:
@@ -23,15 +93,15 @@ jobs:
         include:
           - os: windows-latest
             build_target: windows
-            asset_name: PandaBrew-windows.zip
+            asset_name: PandaBrew-windows.exe
             executable_path: dist/PandaBrew.exe
           - os: ubuntu-latest
             build_target: fedora-x86_64
-            asset_name: PandaBrew-fedora-x86_64.zip
+            asset_name: PandaBrew-fedora-x86_64
             executable_path: dist/PandaBrew
           - os: ubuntu-latest
             build_target: linux-aarch64
-            asset_name: PandaBrew-linux-aarch64.zip
+            asset_name: PandaBrew-linux-aarch64
             executable_path: dist/PandaBrew
 
     # --- Runner ---
@@ -42,6 +112,8 @@ jobs:
       # This step checks out a copy of your repository onto the runner.
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.semantic-release.outputs.new-release-git-tag }}
 
       # --- 2. Set up QEMU for ARM emulation ---
       # This is necessary to build for aarch64 on an x86_64 runner.
@@ -124,28 +196,26 @@ jobs:
               main.py \
           "
       
-      # --- 8. Package the Executable (Windows) ---
-      - name: Package Windows executable
-        if: matrix.os == 'windows-latest'
-        run: Compress-Archive -Path ${{ matrix.executable_path }} -DestinationPath ${{ matrix.asset_name }}
-        shell: pwsh
-
-      # --- 9. Package the Executable (Linux) ---
-      # This step packages the output for both Fedora and aarch64 builds.
-      - name: Package Linux executable
-        if: matrix.os == 'ubuntu-latest'
-        run: zip -j ${{ matrix.asset_name }} ${{ matrix.executable_path }}
+      # --- 8. Rename Executable for Upload ---
+      - name: Rename executable for upload
+        run: |
+          if [ "${{ matrix.build_target }}" = "windows" ]; then
+            # Windows: Copy and rename
+            cp "${{ matrix.executable_path }}" "${{ matrix.asset_name }}"
+          else
+            # Linux: Copy and rename
+            cp "${{ matrix.executable_path }}" "${{ matrix.asset_name }}"
+            # Make sure it's executable
+            chmod +x "${{ matrix.asset_name }}"
+          fi
+        shell: bash
       
-      # --- 10. Create GitHub Release and Upload Assets ---
-      # This step creates the release and uploads the zipped executable as an asset.
-      # It runs for each job in the matrix, adding its asset to the same release.
-      - name: Create Release and Upload Asset
+      # --- 9. Upload Assets to Release ---
+      # This step uploads the zipped executable as an asset to the existing release.
+      - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.asset_name }}
-          name: "Release ${{ github.ref_name }}"
-          tag_name: ${{ github.ref_name }}
-          body: "Official release of PandaBrew, version ${{ github.ref_name }}."
+          tag_name: ${{ needs.semantic-release.outputs.new-release-git-tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
