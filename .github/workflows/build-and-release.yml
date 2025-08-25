@@ -22,10 +22,15 @@ permissions:
   packages: write
 
 jobs:
-  # --- Release and Build Job ---
-  release-and-build:
-    name: Release and Build Executables
+  # --- Semantic Release Job ---
+  semantic-release:
+    name: Semantic Release
     runs-on: ubuntu-latest
+    # Only run semantic release on push events, not on release events
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    outputs:
+      release-tag: ${{ steps.get_tag.outputs.tag }}
+      release-created: ${{ steps.get_tag.outputs.created }}
     steps:
       # --- 1. Checkout Code ---
       - name: Checkout repository
@@ -97,34 +102,91 @@ jobs:
 
       # --- 6. Get latest tag ---
       - name: Get latest tag
-        if: success()
         id: get_tag
-        run: echo "tag=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+        run: |
+          if git describe --tags --abbrev=0 >/dev/null 2>&1; then
+            TAG=$(git describe --tags --abbrev=0)
+            echo "tag=$TAG" >> $GITHUB_OUTPUT
+            echo "created=true" >> $GITHUB_OUTPUT
+            echo "Created release: $TAG"
+          else
+            echo "created=false" >> $GITHUB_OUTPUT
+            echo "No release created"
+          fi
 
-      # --- 7. Build Windows executable ---
-      - name: Set up Python (Windows build)
-        if: success()
+  # --- Build Job ---
+  build:
+    name: Build Executables
+    needs: semantic-release
+    # Run if semantic release created a new release OR if triggered by a release event
+    if: |
+      always() && (
+        (needs.semantic-release.outputs.release-created == 'true') ||
+        (github.event_name == 'release')
+      )
+
+    # --- Strategy Matrix ---
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            build_target: windows
+            asset_name: PandaBrew-windows.exe
+            executable_path: dist/PandaBrew.exe
+          - os: ubuntu-latest
+            build_target: fedora-x86_64
+            asset_name: PandaBrew-fedora-x86_64
+            executable_path: dist/PandaBrew
+          - os: ubuntu-latest
+            build_target: linux-aarch64
+            asset_name: PandaBrew-linux-aarch64
+            executable_path: dist/PandaBrew
+
+    # --- Runner ---
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # --- 1. Checkout Code ---
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Use the tag from semantic release if available, otherwise use the current ref
+          ref: ${{ needs.semantic-release.outputs.release-tag || github.event.release.tag_name || github.ref }}
+
+      # --- 2. Set up QEMU for ARM emulation ---
+      - name: Set up QEMU
+        if: matrix.os == 'ubuntu-latest'
+        uses: docker/setup-qemu-action@v3
+
+      # --- 3. Set up Python (for Windows build) ---
+      - name: Set up Python
+        if: matrix.build_target == 'windows'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Build Windows executable
-        if: success()
+      # --- 4. Install Dependencies (Windows) ---
+      - name: Install Windows dependencies
+        if: matrix.build_target == 'windows'
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
           pip install -r requirements.txt
-          pyinstaller \
-            --name "PandaBrew" \
-            --onefile \
-            --windowed \
-            --icon "pandabrew.ico" \
-            main.py
-          cp dist/PandaBrew.exe PandaBrew-windows.exe
 
-      # --- 8. Build Fedora x86_64 executable ---
-      - name: Build Fedora (x86_64) executable
-        if: success()
+      # --- 5. Build Executable (Windows) ---
+      - name: Build Windows executable with PyInstaller
+        if: matrix.build_target == 'windows'
+        run: |
+          pyinstaller `
+            --name "PandaBrew" `
+            --onefile `
+            --windowed `
+            --icon "pandabrew.ico" `
+            main.py
+
+      # --- 6. Build Executable (Fedora x86_64) ---
+      - name: Build Fedora (x86_64) executable with PyInstaller
+        if: matrix.build_target == 'fedora-x86_64'
         run: |
           docker run --rm -v "${{ github.workspace }}":/app -w /app fedora:latest bash -c " \
             echo 'Installing build dependencies in Fedora container...' && \
@@ -142,17 +204,10 @@ jobs:
               --hidden-import=PIL._tkinter_finder \
               main.py \
           "
-          cp dist/PandaBrew PandaBrew-fedora-x86_64
-          chmod +x PandaBrew-fedora-x86_64
 
-      # --- 9. Set up QEMU for ARM emulation ---
-      - name: Set up QEMU
-        if: success()
-        uses: docker/setup-qemu-action@v3
-
-      # --- 10. Build Linux aarch64 executable ---
-      - name: Build Linux (aarch64) executable
-        if: success()
+      # --- 7. Build Executable (Linux aarch64) ---
+      - name: Build Linux (aarch64) executable with PyInstaller
+        if: matrix.build_target == 'linux-aarch64'
         run: |
           docker run --rm --platform linux/arm64 -v "${{ github.workspace }}":/app -w /app arm64v8/debian:bullseye bash -c " \
             echo 'Updating package list in Debian aarch64 container...' && \
@@ -172,18 +227,27 @@ jobs:
               --hidden-import=PIL._tkinter_finder \
               main.py \
           "
-          cp dist/PandaBrew PandaBrew-linux-aarch64
-          chmod +x PandaBrew-linux-aarch64
 
-      # --- 11. Upload executables to release ---
-      - name: Upload Release Assets
-        if: success()
+      # --- 8. Rename Executable for Upload ---
+      - name: Rename executable for upload
+        run: |
+          if [ "${{ matrix.build_target }}" = "windows" ]; then
+            # Windows: Copy and rename
+            cp "${{ matrix.executable_path }}" "${{ matrix.asset_name }}"
+          else
+            # Linux: Copy and rename
+            cp "${{ matrix.executable_path }}" "${{ matrix.asset_name }}"
+            # Make sure it's executable
+            chmod +x "${{ matrix.asset_name }}"
+          fi
+        shell: bash
+
+      # --- 9. Upload Assets to Release ---
+      - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.get_tag.outputs.tag }}
-          files: |
-            PandaBrew-windows.exe
-            PandaBrew-fedora-x86_64
-            PandaBrew-linux-aarch64
+          files: ${{ matrix.asset_name }}
+          # Use the tag from semantic release if available, otherwise use the release tag
+          tag_name: ${{ needs.semantic-release.outputs.release-tag || github.event.release.tag_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
