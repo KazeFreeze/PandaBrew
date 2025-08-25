@@ -3,11 +3,13 @@
 name: Build and Release Executable
 
 # --- Trigger ---
-# This workflow runs on pushes to the main branch and on manual dispatch.
+# This workflow runs on pushes to the release branch, on release events, and on manual dispatch.
 on:
   push:
     branches:
-      - main
+      - release
+  release:
+    types: [published, created]
   workflow_dispatch:
 
 # --- Permissions ---
@@ -23,6 +25,8 @@ jobs:
   semantic-release:
     name: Semantic Release
     runs-on: ubuntu-latest
+    # Only run semantic release on push events, not on release events
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     outputs:
       new-release-published: ${{ steps.semantic.outputs.new-release-published }}
       new-release-version: ${{ steps.semantic.outputs.new-release-version }}
@@ -48,7 +52,7 @@ jobs:
         run: |
           cat > .releaserc.json << 'EOF'
           {
-            "branches": ["main"],
+            "branches": ["release"],
             "tagFormat": "v${version}",
             "repositoryUrl": "https://github.com/${{ github.repository }}",
             "plugins": [
@@ -98,7 +102,12 @@ jobs:
   build:
     name: Build Executables
     needs: semantic-release
-    if: needs.semantic-release.outputs.new-release-published == 'true'
+    # Run if semantic release created a new release OR if triggered by a release event
+    if: |
+      always() && (
+        (needs.semantic-release.outputs.new-release-published == 'true') ||
+        (github.event_name == 'release')
+      )
 
     # --- Strategy Matrix ---
     # Define the different operating systems, architectures, and corresponding build targets.
@@ -127,7 +136,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.semantic-release.outputs.new-release-git-tag }}
+          # Use the tag from semantic release if available, otherwise use the current ref
+          ref: ${{ needs.semantic-release.outputs.new-release-git-tag || github.ref }}
 
       # --- 2. Set up QEMU for ARM emulation ---
       # This is necessary to build for aarch64 on an x86_64 runner.
@@ -230,6 +240,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.asset_name }}
-          tag_name: ${{ needs.semantic-release.outputs.new-release-git-tag }}
+          # Use the tag from semantic release if available, otherwise use the release tag
+          tag_name: ${{ needs.semantic-release.outputs.new-release-git-tag || github.event.release.tag_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
