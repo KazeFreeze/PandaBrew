@@ -1,3 +1,10 @@
+## [1.1.0](https://github.com/KazeFreeze/PandaBrew/compare/v1.0.0...v1.1.0) (2025-08-25)
+
+
+### Features
+
+* **workflow:** simplify process of release and build ([0136499](https://github.com/KazeFreeze/PandaBrew/commit/0136499e8c08fe1cd68af66d65f965f7607d51f0))
+
 # 1.0.0 (2025-08-25)
 
 
