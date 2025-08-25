@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/KazeFreeze/PandaBrew/compare/v1.1.0...v1.1.1) (2025-08-25)
+
+
+### Bug Fixes
+
+* **workflow:** build each executable in their own OS ([74aff82](https://github.com/KazeFreeze/PandaBrew/commit/74aff82ee8c53c935468a77235796ef9ddb3271f))
+
 ## [1.1.0](https://github.com/KazeFreeze/PandaBrew/compare/v1.0.0...v1.1.0) (2025-08-25)
 
 
