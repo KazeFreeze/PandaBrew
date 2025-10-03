@@ -40,8 +40,6 @@ class QtTreeViewManager:
             root_item = self.model.item(0)
             if root_item:
                 self.tree_view.expand(root_item.index())
-                # Manually update parent state after initial load
-                self._update_parents(root_item)
 
     def _add_item(self, parent_item: QStandardItem, path: Path):
         """Adds a single item to the tree and sets up its properties."""
@@ -65,7 +63,6 @@ class QtTreeViewManager:
 
         if path.is_dir():
             item.setIcon(QIcon.fromTheme("folder", QIcon(":/qt-project.org/styles/commonstyle/images/diropen-128.png")))
-            item.setFlags(item.flags() | Qt.ItemIsUserTristate)
             if any(path.iterdir()):
                 dummy_item = QStandardItem()
                 item.appendRow(dummy_item)
@@ -84,8 +81,6 @@ class QtTreeViewManager:
             try:
                 for child_path in sorted(list(path.iterdir()), key=lambda p: (p.is_file(), p.name.lower())):
                     self._add_item(item, child_path)
-                # After expanding, ensure the parent's state is correct
-                self._update_parents(item.child(0,0) if item.rowCount() > 0 else item)
             except (IOError, PermissionError) as e:
                 print(f"Error expanding {path}: {e}")
 
@@ -98,7 +93,6 @@ class QtTreeViewManager:
         try:
             state = item.checkState()
             self._update_descendants(item, state)
-            self._update_parents(item)
         finally:
             self._is_updating_checks = False
 
@@ -118,34 +112,6 @@ class QtTreeViewManager:
             child_item = parent_item.child(row, 0)
             if child_item and child_item.isCheckable():
                 self._update_descendants(child_item, state)
-
-    def _update_parents(self, item: QStandardItem):
-        """Recursively update the check state of parent items."""
-        parent = item.parent()
-        while parent:
-            child_count = parent.rowCount()
-            checked_count = 0
-            partially_checked_count = 0
-
-            for row in range(child_count):
-                child = parent.child(row, 0)
-                if child and child.isCheckable():
-                    state = child.checkState()
-                    if state == Qt.Checked:
-                        checked_count += 1
-                    elif state == Qt.PartiallyChecked:
-                        partially_checked_count += 1
-
-            new_state = Qt.Unchecked
-            if checked_count == child_count:
-                new_state = Qt.Checked
-            elif checked_count > 0 or partially_checked_count > 0:
-                new_state = Qt.PartiallyChecked
-
-            if parent.checkState() != new_state:
-                parent.setCheckState(new_state)
-
-            parent = parent.parent()
 
     def select_all(self):
         """Selects all items in the tree."""
