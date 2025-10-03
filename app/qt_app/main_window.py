@@ -45,7 +45,7 @@ class MainWindow(QMainWindow):
         self.ui_components = UIComponents(self)
         self.ui_components.create_main_layout() # This creates and adds the bottom bar
 
-        self.apply_styles()
+        # self.apply_styles() # Temporarily disabled for debugging
 
     def apply_styles(self):
         self.setStyle(QStyleFactory.create("Fusion"))
