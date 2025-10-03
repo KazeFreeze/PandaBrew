@@ -134,8 +134,8 @@ jobs:
             asset_name: PandaBrew-windows.exe
             executable_path: dist/PandaBrew.exe
           - os: ubuntu-latest
-            build_target: fedora-x86_64
-            asset_name: PandaBrew-fedora-x86_64
+            build_target: linux-x86_64
+            asset_name: PandaBrew-linux-x86_64
             executable_path: dist/PandaBrew
           - os: ubuntu-latest
             build_target: linux-aarch64
@@ -186,7 +186,7 @@ jobs:
 
       # --- 6. Build Executable (Fedora x86_64) ---
       - name: Build Fedora (x86_64) executable with PyInstaller
-        if: matrix.build_target == 'fedora-x86_64'
+        if: matrix.build_target == 'linux-x86_64'
         run: |
           docker run --rm -v "${{ github.workspace }}":/app -w /app fedora:latest bash -c " \
             echo 'Installing build dependencies in Fedora container...' && \
