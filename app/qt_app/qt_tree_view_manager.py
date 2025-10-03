@@ -85,50 +85,46 @@ class QtTreeViewManager:
                 print(f"Error expanding {path}: {e}")
 
     def on_item_changed(self, item: QStandardItem):
-        """Handles the logic when a checkbox is clicked."""
+        """Handles the logic when a checkbox is clicked by the user."""
         if self._is_updating_checks:
             return
 
         self._is_updating_checks = True
         try:
             state = item.checkState()
-            self._update_descendants(item, state)
+            path = Path(item.data(Qt.UserRole))
+
+            # 1. Update the data model (self.checked_paths) by scanning the disk
+            paths_to_update = {str(path)}
+            if path.is_dir():
+                try:
+                    paths_to_update.update({str(child) for child in path.rglob("*")})
+                except (IOError, PermissionError) as e:
+                    print(f"Permission error scanning {path}: {e}")
+
+            if state == Qt.Checked:
+                self.checked_paths.update(paths_to_update)
+            else:
+                self.checked_paths.difference_update(paths_to_update)
+
+            # 2. Sync the UI of all *visible* items with the data model
+            for path_str, visible_item in self.path_to_item_map.items():
+                is_checked = path_str in self.checked_paths
+                new_state = Qt.Checked if is_checked else Qt.Unchecked
+                if visible_item.checkState() != new_state:
+                    visible_item.setCheckState(new_state)
+
         finally:
             self._is_updating_checks = False
 
-    def _update_descendants(self, parent_item: QStandardItem, state: Qt.CheckState):
-        """Recursively update the check state of all descendant items."""
-        if parent_item.checkState() == state:
-            return
-
-        parent_item.setCheckState(state)
-        path_str = parent_item.data(Qt.UserRole)
-        if state == Qt.Checked:
-            self.checked_paths.add(path_str)
-        else:
-            self.checked_paths.discard(path_str)
-
-        for row in range(parent_item.rowCount()):
-            child_item = parent_item.child(row, 0)
-            if child_item and child_item.isCheckable():
-                self._update_descendants(child_item, state)
-
     def select_all(self):
         """Selects all items in the tree."""
-        self._is_updating_checks = True
-        root = self.model.invisibleRootItem()
-        for row in range(root.rowCount()):
-            item = root.child(row, 0)
-            if item:
-                self._update_descendants(item, Qt.Checked)
-        self._is_updating_checks = False
+        root_item = self.model.item(0, 0)
+        if root_item:
+            root_item.setCheckState(Qt.Checked)
 
     def deselect_all(self):
         """Deselects all items in the tree."""
-        self._is_updating_checks = True
-        root = self.model.invisibleRootItem()
-        for row in range(root.rowCount()):
-            item = root.child(row, 0)
-            if item:
-                self._update_descendants(item, Qt.Unchecked)
-        self._is_updating_checks = False
+        root_item = self.model.item(0, 0)
+        if root_item:
+            root_item.setCheckState(Qt.Unchecked)
