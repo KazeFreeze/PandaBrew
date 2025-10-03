@@ -1,142 +1,79 @@
-import tkinter as tk
-from tkinter import ttk
-import ttkbootstrap as ttkb
-from ttkbootstrap.dialogs import Messagebox
-from pathlib import Path
 import threading
-import queue
-from typing import Dict, Any, Optional
+from PySide6.QtCore import QObject, Signal, Slot
+from typing import Dict, Any, List, Set
 
 from . import core
 
-class ThreadedFileProcessor:
-    """
-    Handles file processing in a separate thread to prevent UI freezing.
-    Acts as a bridge between the UI and the core processing logic.
-    """
+class FileProcessorSignals(QObject):
+    """Defines the signals available from the file processing thread."""
+    progress = Signal(int, str)  # Percentage, Status message
+    complete = Signal(str, str, int)  # Title, Message, Processed count
+    error = Signal(str)  # Error message
+    cancelled = Signal()
 
-    def __init__(self, app_instance):
-        """Initializes the threaded file processor."""
-        self.app = app_instance
-        self.processing_thread: Optional[threading.Thread] = None
+class ThreadedFileProcessor(QObject):
+    """
+    Handles file processing in a separate thread, communicating with the UI via signals.
+    """
+    def __init__(self):
+        super().__init__()
+        self.signals = FileProcessorSignals()
         self.cancel_event = threading.Event()
-        self.progress_queue = queue.Queue()
         self.is_processing = False
-        self._check_progress_queue()
 
-    def _check_progress_queue(self):
-        """Periodically checks for progress updates from the worker thread."""
-        try:
-            while True:
-                message = self.progress_queue.get_nowait()
-                self._handle_progress_message(message)
-        except queue.Empty:
-            pass
-        finally:
-            self.app.root.after(100, self._check_progress_queue)
-
-    def _handle_progress_message(self, message: Dict[str, Any]):
-        """Handles progress messages from the worker thread in the main UI thread."""
-        msg_type = message.get("type")
-        if msg_type == "progress":
-            if self.app.progress: self.app.progress["value"] = message["value"]
-            if self.app.status_label: self.app.status_label["text"] = message["status"]
-        elif msg_type == "complete":
-            self.is_processing = False
-            self.app.set_ui_processing_state(False)
-            if self.app.progress: self.app.progress["value"] = 100
-            if self.app.status_label: self.app.status_label["text"] = message["status"]
-            Messagebox.show_info(message["title"], message["message"], parent=self.app.root)
-        elif msg_type == "error":
-            self.is_processing = False
-            self.app.set_ui_processing_state(False)
-            if self.app.status_label: self.app.status_label["text"] = "Error occurred"
-            Messagebox.show_error("Error", message["message"], parent=self.app.root)
-        elif msg_type == "cancelled":
-            self.is_processing = False
-            self.app.set_ui_processing_state(False)
-            if self.app.status_label: self.app.status_label["text"] = "Operation cancelled"
-            if self.app.progress: self.app.progress["value"] = 0
-
-    def process_files(self) -> None:
-        """Starts file processing in a separate thread."""
+    @Slot()
+    def process_files(self, process_params: Dict[str, Any]):
+        """
+        Starts the file processing operation. This slot is designed to be called
+        when the processor is moved to a QThread.
+        """
         if self.is_processing:
-            Messagebox.show_warning("Processing", "File processing is already in progress.", parent=self.app.root)
+            self.signals.error.emit("Processing is already in progress.")
             return
 
-        active_tab = self.app.get_active_tab()
-        if not active_tab:
-            Messagebox.show_error("Error", "No active tab found.", parent=self.app.root)
-            return
-
-        source = active_tab["source_path"].get()
-        output = active_tab["output_path"].get()
-
-        if not source or not output:
-            Messagebox.show_error("Error", "Please select a source directory and an output file.", parent=self.app.root)
-            return
-
-        self.app.config_manager.save_app_state()
         self.cancel_event.clear()
         self.is_processing = True
-        self.app.set_ui_processing_state(True)
 
-        self.processing_thread = threading.Thread(
-            target=self._process_files_worker,
-            args=(active_tab, source, output),
-            daemon=True,
-        )
-        self.processing_thread.start()
-
-    def cancel_processing(self) -> None:
-        """Sets the event to signal cancellation to the worker thread."""
-        if self.is_processing:
-            self.cancel_event.set()
-
-    def _process_files_worker(self, active_tab: Dict[str, Any], source: str, output: str):
-        """Worker method that gathers UI data and calls the core processing function."""
         try:
-            tree_manager = active_tab["tree_view_manager"]
-            manual_selections = tree_manager.checked_paths.copy()
-            include_mode = self.app.include_mode.get()
-            filenames_only = self.app.filenames_only.get()
-            show_excluded = self.app.show_excluded_in_structure.get()
-
-            def get_patterns_from_text_widget(widget):
-                if not widget: return []
-                text = widget.get("1.0", tk.END)
-                return [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith('#')]
-
-            include_patterns = get_patterns_from_text_widget(active_tab.get("include_patterns_text"))
-            exclude_patterns = get_patterns_from_text_widget(active_tab.get("exclude_patterns_text"))
-
             def progress_callback(value: float, status: str):
-                self.progress_queue.put({"type": "progress", "value": value, "status": status})
+                if self.cancel_event.is_set():
+                    # Stop further progress updates if cancellation is requested
+                    raise InterruptedError("Processing was cancelled.")
+                self.signals.progress.emit(int(value), status)
 
             processed_count = core.generate_report_to_file(
-                output_file=output,
-                source_path_str=source,
-                include_mode=include_mode,
-                manual_selections_str=manual_selections,
-                include_patterns=include_patterns,
-                exclude_patterns=exclude_patterns,
-                filenames_only=filenames_only,
-                show_excluded=show_excluded,
+                output_file=process_params["output_path"],
+                source_path_str=process_params["source_path"],
+                include_mode=process_params["include_mode"],
+                manual_selections_str=process_params["manual_selections"],
+                include_patterns=process_params["include_patterns"],
+                exclude_patterns=process_params["exclude_patterns"],
+                filenames_only=process_params["filenames_only"],
+                show_excluded=process_params["show_excluded"],
                 cancel_event=self.cancel_event,
                 progress_callback=progress_callback,
             )
 
             if self.cancel_event.is_set():
-                self.progress_queue.put({"type": "cancelled"})
+                self.signals.cancelled.emit()
             else:
-                self.progress_queue.put({
-                    "type": "complete",
-                    "title": "Extraction Complete",
-                    "message": f"Extraction finished.\n\n{processed_count} files matched the filters and were saved to:\n{output}",
-                    "status": f"Complete. {processed_count} files processed.",
-                })
+                title = "Extraction Complete"
+                message = (
+                    f"Extraction finished.\n\n{processed_count} files matched the filters "
+                    f"and were saved to:\n{process_params['output_path']}"
+                )
+                self.signals.complete.emit(title, message, processed_count)
 
+        except InterruptedError:
+             self.signals.cancelled.emit()
         except Exception as e:
             import traceback
             traceback.print_exc()
-            self.progress_queue.put({"type": "error", "message": f"An unexpected error occurred:\n{e}"})
+            self.signals.error.emit(f"An unexpected error occurred:\n{e}")
+        finally:
+            self.is_processing = False
+
+    def cancel_processing(self):
+        """Signals the worker thread to cancel the operation."""
+        if self.is_processing:
+            self.cancel_event.set()
