@@ -17,9 +17,8 @@ class QtTreeViewManager:
         self.model.setHorizontalHeaderLabels(['Name', 'Size'])
         self.tree_view.setModel(self.model)
         header = self.tree_view.header()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setStretchLastSection(False) # Explicitly disable stretching the last section
 
         self.checked_paths: Set[str] = set()
         self.path_to_item_map: Dict[str, QStandardItem] = {}
@@ -66,7 +65,7 @@ class QtTreeViewManager:
 
         if path.is_dir():
             item.setIcon(QIcon.fromTheme("folder", QIcon(":/qt-project.org/styles/commonstyle/images/diropen-128.png")))
-            item.setTristate(True) # Allow partially checked state for directories
+            item.setFlags(item.flags() | Qt.ItemIsUserTristate)
             if any(path.iterdir()):
                 dummy_item = QStandardItem()
                 item.appendRow(dummy_item)

@@ -118,7 +118,7 @@ class TabWidget(QWidget):
             "include_mode": self.include_radio.isChecked(),
             "filenames_only": self.filenames_only_check.isChecked(),
             "show_excluded": self.show_excluded_check.isChecked(),
-            "manual_selections": self.tree_view_manager.checked_paths
+            "manual_selections": list(self.tree_view_manager.checked_paths)
         }
 
     def set_state(self, state: dict):

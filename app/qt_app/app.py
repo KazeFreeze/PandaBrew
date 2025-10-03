@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from .main_window import MainWindow
@@ -21,6 +22,15 @@ class PandaBrewQtApp:
     """
     def __init__(self):
         self.app = QApplication(sys.argv)
+
+        # Set a more readable default font
+        font = QFont("Segoe UI", 10)
+        if sys.platform == "darwin":
+            font = QFont("San Francisco", 10)
+        elif sys.platform == "linux":
+            font = QFont("Noto Sans", 10)
+        self.app.setFont(font)
+
         self.signals = AppSignals()
         self.config_manager = ConfigManager()
         self.config = self.config_manager.load_app_state()
