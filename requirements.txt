@@ -1,2 +1,4 @@
 ttkbootstrap
 pywinstyles
+PySide6
+darkdetect
