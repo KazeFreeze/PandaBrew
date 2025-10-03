@@ -132,3 +132,36 @@ def test_filter_precedence_pipeline(test_project: Path, tmp_path: Path):
     assert "guide.md" not in report
     assert "print('hello')" in report
     assert "def helper(): pass" not in report
+
+def test_folder_exclusion_with_explicit_children(test_project: Path, tmp_path: Path):
+    """
+    Test excluding the 'docs' directory where manual selections include
+    the directory and all its children, mimicking the UI behavior.
+    The output should contain all files EXCEPT those in the 'docs' directory.
+    """
+    output_file = tmp_path / "output.txt"
+
+    docs_dir = test_project / "docs"
+    # Mimic UI behavior: select the folder and all its contents
+    manual_selections = {str(docs_dir)}
+    manual_selections.update({str(p) for p in docs_dir.rglob("*")})
+
+    report = run_core_logic(
+        test_project,
+        output_file,
+        include_mode=False,
+        manual_selections=manual_selections
+    )
+
+    # Expected: everything EXCEPT the contents of 'docs' should be present.
+    assert "main.py" in report
+    assert "utils.py" in report
+    assert "LICENSE" in report
+    assert ".secrets" in report
+    assert "guide.md" not in report # Ensure the excluded file is gone
+
+    # Stricter check: ensure the file count is correct.
+    # The test project has 4 files not in 'docs'.
+    assert report.count("--- file:") == 4
+    assert "print('hello')" in report # Check content is present
+    assert "def helper(): pass" in report
