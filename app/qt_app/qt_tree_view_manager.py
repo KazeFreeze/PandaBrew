@@ -19,6 +19,7 @@ class QtTreeViewManager:
         header = self.tree_view.header()
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setStretchLastSection(False) # Explicitly disable stretching the last section
 
         self.checked_paths: Set[str] = set()
         self.path_to_item_map: Dict[str, QStandardItem] = {}
@@ -40,6 +41,8 @@ class QtTreeViewManager:
             root_item = self.model.item(0)
             if root_item:
                 self.tree_view.expand(root_item.index())
+                # Manually update parent state after initial load
+                self._update_parents(root_item)
 
     def _add_item(self, parent_item: QStandardItem, path: Path):
         """Adds a single item to the tree and sets up its properties."""
@@ -63,6 +66,7 @@ class QtTreeViewManager:
 
         if path.is_dir():
             item.setIcon(QIcon.fromTheme("folder", QIcon(":/qt-project.org/styles/commonstyle/images/diropen-128.png")))
+            item.setTristate(True) # Allow partially checked state for directories
             if any(path.iterdir()):
                 dummy_item = QStandardItem()
                 item.appendRow(dummy_item)
@@ -81,6 +85,8 @@ class QtTreeViewManager:
             try:
                 for child_path in sorted(list(path.iterdir()), key=lambda p: (p.is_file(), p.name.lower())):
                     self._add_item(item, child_path)
+                # After expanding, ensure the parent's state is correct
+                self._update_parents(item.child(0,0) if item.rowCount() > 0 else item)
             except (IOError, PermissionError) as e:
                 print(f"Error expanding {path}: {e}")
 
@@ -91,57 +97,54 @@ class QtTreeViewManager:
 
         self._is_updating_checks = True
         try:
-            path_str = item.data(Qt.UserRole)
-            is_checked = item.checkState() == Qt.Checked
-
-            if path_str in self.path_to_item_map:
-                self._update_descendants(self.path_to_item_map[path_str], is_checked)
-
+            state = item.checkState()
+            self._update_descendants(item, state)
             self._update_parents(item)
         finally:
             self._is_updating_checks = False
 
-    def _update_descendants(self, parent_item: QStandardItem, is_checked: bool):
+    def _update_descendants(self, parent_item: QStandardItem, state: Qt.CheckState):
         """Recursively update the check state of all descendant items."""
-        check_state = Qt.Checked if is_checked else Qt.Unchecked
-        if parent_item.checkState() == check_state:
+        if parent_item.checkState() == state:
             return
 
-        parent_item.setCheckState(check_state)
+        parent_item.setCheckState(state)
         path_str = parent_item.data(Qt.UserRole)
-        if is_checked:
+        if state == Qt.Checked:
             self.checked_paths.add(path_str)
         else:
             self.checked_paths.discard(path_str)
 
         for row in range(parent_item.rowCount()):
             child_item = parent_item.child(row, 0)
-            if child_item:
-                self._update_descendants(child_item, is_checked)
+            if child_item and child_item.isCheckable():
+                self._update_descendants(child_item, state)
 
     def _update_parents(self, item: QStandardItem):
         """Recursively update the check state of parent items."""
         parent = item.parent()
         while parent:
-            if parent.checkState() == Qt.PartiallyChecked:
-                parent.setCheckState(Qt.Checked) # Or some other logic
+            child_count = parent.rowCount()
+            checked_count = 0
+            partially_checked_count = 0
 
-            all_children_checked = True
-            for row in range(parent.rowCount()):
+            for row in range(child_count):
                 child = parent.child(row, 0)
-                if child and child.checkState() != Qt.Checked:
-                    all_children_checked = False
-                    break
+                if child and child.isCheckable():
+                    state = child.checkState()
+                    if state == Qt.Checked:
+                        checked_count += 1
+                    elif state == Qt.PartiallyChecked:
+                        partially_checked_count += 1
 
-            check_state = Qt.Checked if all_children_checked else Qt.Unchecked
-            if parent.checkState() != check_state:
-                parent.setCheckState(check_state)
+            new_state = Qt.Unchecked
+            if checked_count == child_count:
+                new_state = Qt.Checked
+            elif checked_count > 0 or partially_checked_count > 0:
+                new_state = Qt.PartiallyChecked
 
-            path_str = parent.data(Qt.UserRole)
-            if all_children_checked:
-                self.checked_paths.add(path_str)
-            else:
-                self.checked_paths.discard(path_str)
+            if parent.checkState() != new_state:
+                parent.setCheckState(new_state)
 
             parent = parent.parent()
 
@@ -152,7 +155,7 @@ class QtTreeViewManager:
         for row in range(root.rowCount()):
             item = root.child(row, 0)
             if item:
-                self._update_descendants(item, True)
+                self._update_descendants(item, Qt.Checked)
         self._is_updating_checks = False
 
     def deselect_all(self):
@@ -162,5 +165,5 @@ class QtTreeViewManager:
         for row in range(root.rowCount()):
             item = root.child(row, 0)
             if item:
-                self._update_descendants(item, False)
+                self._update_descendants(item, Qt.Unchecked)
         self._is_updating_checks = False

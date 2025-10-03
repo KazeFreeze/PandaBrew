@@ -12,9 +12,9 @@ QTabWidget::pane {
 QTabBar::tab {
     background: #2b2b2b;
     border: 1px solid #3c3c3c;
-    padding: 10px;
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
+    padding: 5px; /* Reduced padding */
 }
 
 QTabBar::tab:selected {
@@ -22,15 +22,11 @@ QTabBar::tab:selected {
     border-bottom-color: #3c3c3c;
 }
 
-QTabBar::tab:!selected {
-    margin-top: 2px;
-}
-
 QPushButton {
     background-color: #3c3c3c;
     border: 1px solid #4c4c4c;
-    padding: 5px 10px;
     border-radius: 4px;
+    padding: 5px;
 }
 
 QPushButton:hover {
@@ -48,8 +44,8 @@ QTreeView {
 
 QHeaderView::section {
     background-color: #3c3c3c;
-    padding: 4px;
     border: 1px solid #4c4c4c;
+    padding: 4px;
 }
 
 QProgressBar {
@@ -60,7 +56,6 @@ QProgressBar {
 
 QProgressBar::chunk {
     background-color: #05B8CC;
-    width: 20px;
 }
 
 QCheckBox::indicator, QRadioButton::indicator {
@@ -78,4 +73,23 @@ QCheckBox::indicator:checked, QRadioButton::indicator:checked {
 
 QCheckBox::indicator:hover, QRadioButton::indicator:hover {
     border: 1px solid #05B8CC;
+}
+
+QGroupBox {
+    border: 1px solid #4c4c4c;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 5px;
+}
+
+QLineEdit, QTextEdit {
+    background-color: #3c3c3c;
+    border: 1px solid #4c4c4c;
+    border-radius: 4px;
+    padding: 2px;
 }
