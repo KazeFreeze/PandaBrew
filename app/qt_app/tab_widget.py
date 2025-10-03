@@ -113,25 +113,25 @@ class TabWidget(QWidget):
         return {
             "source_path": self.source_entry.text(),
             "output_path": self.output_entry.text(),
-            "include_patterns": self.include_text.toPlainText(),
-            "exclude_patterns": self.exclude_text.toPlainText(),
+            "include_patterns": self.include_text.toPlainText().splitlines(),
+            "exclude_patterns": self.exclude_text.toPlainText().splitlines(),
             "include_mode": self.include_radio.isChecked(),
             "filenames_only": self.filenames_only_check.isChecked(),
             "show_excluded": self.show_excluded_check.isChecked(),
-            "checked_paths": list(self.tree_view_manager.checked_paths)
+            "manual_selections": self.tree_view_manager.checked_paths
         }
 
     def set_state(self, state: dict):
         """Sets the state of the tab's UI controls from a dictionary."""
         self.source_entry.setText(state.get("source_path", ""))
         self.output_entry.setText(state.get("output_path", ""))
-        self.include_text.setPlainText(state.get("include_patterns", ""))
-        self.exclude_text.setPlainText(state.get("exclude_patterns", ""))
+        self.include_text.setPlainText("\n".join(state.get("include_patterns", [])))
+        self.exclude_text.setPlainText("\n".join(state.get("exclude_patterns", [])))
         self.include_radio.setChecked(state.get("include_mode", True))
         self.filenames_only_check.setChecked(state.get("filenames_only", False))
         self.show_excluded_check.setChecked(state.get("show_excluded", True))
 
-        self.tree_view_manager.checked_paths = set(state.get("checked_paths", []))
+        self.tree_view_manager.checked_paths = set(state.get("manual_selections", []))
 
         if self.source_entry.text():
             self.tree_view_manager.refresh_tree(self.source_entry.text())

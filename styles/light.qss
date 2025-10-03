@@ -62,3 +62,20 @@ QProgressBar::chunk {
     background-color: #05B8CC;
     width: 20px;
 }
+
+QCheckBox::indicator, QRadioButton::indicator {
+    border: 1px solid #aaaaaa;
+    border-radius: 4px;
+    width: 16px;
+    height: 16px;
+    background-color: #ffffff;
+}
+
+QCheckBox::indicator:checked, QRadioButton::indicator:checked {
+    background-color: #0078d7;
+    border-color: #0078d7;
+}
+
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {
+    border: 1px solid #0078d7;
+}

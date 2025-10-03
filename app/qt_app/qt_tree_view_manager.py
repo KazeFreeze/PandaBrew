@@ -1,6 +1,6 @@
 from PySide6.QtCore import Qt, QDir
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon
-from PySide6.QtWidgets import QTreeView
+from PySide6.QtWidgets import QTreeView, QHeaderView
 from pathlib import Path
 from typing import Set, Dict
 
@@ -16,7 +16,9 @@ class QtTreeViewManager:
         self.model = QStandardItemModel()
         self.model.setHorizontalHeaderLabels(['Name', 'Size'])
         self.tree_view.setModel(self.model)
-        self.tree_view.setColumnWidth(0, 350)
+        header = self.tree_view.header()
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
 
         self.checked_paths: Set[str] = set()
         self.path_to_item_map: Dict[str, QStandardItem] = {}
@@ -54,6 +56,7 @@ class QtTreeViewManager:
         size_str = format_file_size(path.stat().st_size) if path.is_file() else ""
         size_item = QStandardItem(size_str)
         size_item.setEditable(False)
+        size_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         parent_item.appendRow([item, size_item])
         self.path_to_item_map[path_str] = item

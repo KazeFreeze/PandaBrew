@@ -63,6 +63,7 @@ class PandaBrewQtApp:
         # Connect main window buttons
         self.main_window.add_tab_button.clicked.connect(self.add_new_tab)
         self.main_window.close_tab_button.clicked.connect(self.close_current_tab)
+        self.main_window.help_button.clicked.connect(self.show_filter_help)
 
         self.main_window.ui_components.extract_btn.clicked.connect(self.start_processing)
         self.main_window.ui_components.cancel_btn.clicked.connect(self.file_processor.cancel_processing)
@@ -148,6 +149,31 @@ class PandaBrewQtApp:
         else:
             QMessageBox.warning(self.main_window, "Path Not Found", "The specified source path does not exist.")
 
+    def show_filter_help(self):
+        """Displays a dialog with help text for filter patterns."""
+        pipeline_explanation = (
+            "<b>Filter Precedence Pipeline</b><br>"
+            "Filters are applied in the following order:<br><br>"
+            "1. <b>Manual Selections</b>: The initial set of files is determined by the "
+            "checked items in the tree view and the 'Include/Exclude' mode.<br><br>"
+            "2. <b>Exclude Patterns</b>: Files matching these patterns are <b>removed</b> from the set.<br><br>"
+            "3. <b>Include Patterns</b>: Files matching these patterns are <b>added back</b> to the set, "
+            "overriding any previous exclusions."
+        )
+        syntax_explanation = (
+            "<br><br><b>Pattern Syntax</b><br>"
+            "Patterns use glob-style matching, similar to .gitignore.<br><br>"
+            "- <code>*</code> matches everything<br>"
+            "- <code>?</code> matches any single character<br>"
+            "- <code>[seq]</code> matches any character in seq<br>"
+            "- <code>[!seq]</code> matches any character not in seq<br><br>"
+            "<b>Examples</b><br>"
+            "- <code>*.py</code>: Matches all Python files.<br>"
+            "- <code>src/*</code>: Matches all files in the <code>src</code> directory.<br>"
+            "- <code>__pycache__/</code>: Matches the pycache directory.<br>"
+        )
+        help_text = pipeline_explanation + syntax_explanation
+        QMessageBox.information(self.main_window, "Filter Help", help_text)
 
     def _on_tab_change(self, index: int):
         """Handles logic for when the active tab changes."""
