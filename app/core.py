@@ -140,9 +140,15 @@ def generate_report_to_file(
                     exclusion_roots.add(path)
 
             if exclusion_roots:
+                # Convert Path objects to strings for much faster startswith checks.
+                import os
+                dir_roots = {str(p) + os.path.sep for p in exclusion_roots if p.is_dir()}
+                file_roots = {str(p) for p in exclusion_roots if p.is_file()}
+
                 to_remove = set()
                 for path in initial_set:
-                    if any(path == root or path.is_relative_to(root) for root in exclusion_roots):
+                    path_str = str(path)
+                    if path_str in file_roots or any(path_str.startswith(dr) for dr in dir_roots):
                         to_remove.add(path)
                 initial_set.difference_update(to_remove)
 

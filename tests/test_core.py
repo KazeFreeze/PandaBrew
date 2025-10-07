@@ -269,3 +269,43 @@ def test_exclude_mode_with_reincluded_child(tmp_path: Path):
     assert "file: dir1/file3.txt" not in report
     # file1.txt was never excluded and should be present
     assert "file: file1.txt" in report
+
+
+def test_exclude_mode_performance_with_large_dataset(tmp_path: Path):
+    """
+    Test performance of exclude mode with a large number of files.
+    This test will hang or be very slow without the string-based optimization.
+    """
+    source_path = tmp_path / "large_project"
+    source_path.mkdir()
+
+    # Create a large number of files in various directories
+    total_dirs = 5
+    files_per_dir = 500
+    for i in range(total_dirs):
+        dir_path = source_path / f"dir_{i}"
+        dir_path.mkdir()
+        for j in range(files_per_dir):
+            (dir_path / f"file_{j}.txt").write_text(f"content_{i}_{j}")
+
+    output_file = tmp_path / "output.txt"
+
+    # Exclude two of the directories
+    dir_to_exclude1 = source_path / "dir_1"
+    dir_to_exclude2 = source_path / "dir_3"
+    manual_selections = {str(dir_to_exclude1), str(dir_to_exclude2)}
+
+    report = run_core_logic(
+        source_path,
+        output_file,
+        include_mode=False,
+        manual_selections=manual_selections,
+    )
+
+    # Assert that a file from an included directory is present
+    assert "file: dir_0/file_0.txt" in report
+    # Assert that a file from an excluded directory is NOT present
+    assert "file: dir_1/file_0.txt" not in report
+    # Assert that the total number of files is correct
+    # Total files = 5 * 500 = 2500. Excluded files = 2 * 500 = 1000. Expected = 1500.
+    assert report.count("--- file:") == 1500
