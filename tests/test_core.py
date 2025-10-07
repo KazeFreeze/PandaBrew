@@ -232,3 +232,40 @@ def test_exclude_mode_selection(tmp_path: Path):
     assert "file: file1.log" not in report
     # The text file is in an excluded directory
     assert "file: dir/file3.txt" not in report
+
+
+def test_exclude_mode_with_reincluded_child(tmp_path: Path):
+    """
+    Test exclude mode: a parent is excluded (checked), but a child is
+    re-included (unchecked). The child should appear in the output.
+    """
+    source_path = Path(__file__).parent / "test_data" / "include_mode_input"
+    output_file = tmp_path / "output.txt"
+
+    dir1_path = source_path / "dir1"
+    file2_path = dir1_path / "file2.txt"
+    file3_path = dir1_path / "file3.txt"
+
+    # Mimic UI: User checks 'dir1' (to exclude it), then unchecks 'file2.txt'
+    # to re-include it.
+    # `manual_selections` are the EXCLUDED items.
+    manual_selections = {str(dir1_path), str(file3_path)}
+    # `manual_exclusions` are the UNCHECKED items, used here for re-inclusion.
+    manual_exclusions = {str(file2_path)}
+
+
+    report = run_core_logic(
+        source_path,
+        output_file,
+        include_mode=False,
+        manual_selections=manual_selections,
+        manual_exclusions=manual_exclusions,
+    )
+
+    # file2.txt was re-included and should be present
+    assert "file: dir1/file2.txt" in report
+    assert "This is file 2" in report
+    # file3.txt was part of the excluded dir and was not re-included
+    assert "file: dir1/file3.txt" not in report
+    # file1.txt was never excluded and should be present
+    assert "file: file1.txt" in report

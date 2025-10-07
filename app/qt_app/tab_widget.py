@@ -112,17 +112,22 @@ class TabWidget(QWidget):
     def get_state(self) -> dict:
         """
         Returns the current state of the tab's UI controls.
-        For include mode, this calculates the set of deselected (excluded) paths.
+        Calculates the sets of checked and unchecked paths from the UI state.
         """
         checked_paths = self.tree_view_manager.checked_paths
-        manual_exclusions = set()
         source_path_str = self.source_entry.text()
 
-        # The deselection logic is only needed for "include" mode.
-        # We derive exclusions from the items loaded in the tree view to avoid slow FS scans.
-        if self.include_radio.isChecked():
-            all_loaded_paths = set(self.tree_view_manager.path_to_item_map.keys())
-            manual_exclusions = all_loaded_paths - checked_paths
+        # We need to know all items that have been loaded into the tree view
+        # to accurately determine the set of *unchecked* items.
+        all_loaded_paths = set(self.tree_view_manager.path_to_item_map.keys())
+        unchecked_paths = all_loaded_paths - checked_paths
+
+        # The core logic interprets these two lists differently based on the mode.
+        # UI's job is just to report the state accurately.
+        # - Selections = Checked items
+        # - Exclusions = Unchecked items
+        manual_selections = checked_paths
+        manual_exclusions = unchecked_paths
 
         return {
             "source_path": source_path_str,
@@ -132,7 +137,7 @@ class TabWidget(QWidget):
             "include_mode": self.include_radio.isChecked(),
             "filenames_only": self.filenames_only_check.isChecked(),
             "show_excluded": self.show_excluded_check.isChecked(),
-            "manual_selections": list(checked_paths),
+            "manual_selections": list(manual_selections),
             "manual_exclusions": list(manual_exclusions),
         }
 

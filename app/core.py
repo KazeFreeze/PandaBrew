@@ -124,14 +124,30 @@ def generate_report_to_file(
                     initial_set.add(path)
         # Now, remove any files that were explicitly deselected.
         initial_set.difference_update(manual_exclusions)
-    else: # Exclude mode
+    else:  # Exclude mode
         initial_set = all_files.copy()
+
+        # In exclude mode, `manual_selections` are the items to EXCLUDE.
+        # `manual_exclusions` are items that were UNCHECKED, so they need to be RE-INCLUDED.
+
         if manual_selections:
-            to_remove = set()
-            for path in initial_set:
-                if any(path == ms or path.is_relative_to(ms) for ms in manual_selections):
-                    to_remove.add(path)
-            initial_set.difference_update(to_remove)
+            # Optimization: Prune the exclusion list. If '/a' is excluded,
+            # there's no need to also check against '/a/b'.
+            sorted_selections = sorted(list(manual_selections), key=lambda p: len(p.parts))
+            exclusion_roots = set()
+            for path in sorted_selections:
+                if not any(path.is_relative_to(p) for p in exclusion_roots):
+                    exclusion_roots.add(path)
+
+            if exclusion_roots:
+                to_remove = set()
+                for path in initial_set:
+                    if any(path == root or path.is_relative_to(root) for root in exclusion_roots):
+                        to_remove.add(path)
+                initial_set.difference_update(to_remove)
+
+        # Re-include any files that were explicitly unchecked by the user.
+        initial_set.update(manual_exclusions)
 
     files_in_scope = initial_set.copy() # For the tree view
 
