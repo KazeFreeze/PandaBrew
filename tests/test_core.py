@@ -28,6 +28,7 @@ def run_core_logic(
     output_path: Path,
     include_mode: bool = True,
     manual_selections: set = None,
+    manual_exclusions: set = None,
     include_patterns: list = None,
     exclude_patterns: list = None,
     filenames_only: bool = False,
@@ -35,6 +36,7 @@ def run_core_logic(
 ) -> str:
     """Helper function to run the core logic and return the report content."""
     manual_selections = manual_selections or set()
+    manual_exclusions = manual_exclusions or set()
     include_patterns = include_patterns or []
     exclude_patterns = exclude_patterns or []
 
@@ -43,6 +45,7 @@ def run_core_logic(
         source_path_str=str(source_path),
         include_mode=include_mode,
         manual_selections_str=manual_selections,
+        manual_exclusions_str=manual_exclusions,
         include_patterns=include_patterns,
         exclude_patterns=exclude_patterns,
         filenames_only=filenames_only,
@@ -165,3 +168,67 @@ def test_folder_exclusion_with_explicit_children(test_project: Path, tmp_path: P
     assert report.count("--- file:") == 4
     assert "print('hello')" in report # Check content is present
     assert "def helper(): pass" in report
+
+
+def test_include_mode_with_deselected_child(tmp_path: Path):
+    """
+    Test a core use case for include mode: a parent directory is selected,
+    but a specific child file is deselected. The deselected file should
+    not be in the output.
+    """
+    # Use the pre-made test data directory
+    source_path = Path(__file__).parent / "test_data" / "include_mode_input"
+    output_file = tmp_path / "output.txt"
+
+    dir1_path = source_path / "dir1"
+    file2_path = dir1_path / "file2.txt"
+    file3_path = dir1_path / "file3.txt" # This file will be deselected
+
+    # Mimic UI behavior: user checks 'dir1', which auto-checks children.
+    # Then, user unchecks 'file3.txt'.
+    manual_selections = {str(dir1_path), str(file2_path)}
+    manual_exclusions = {str(file3_path)}
+
+    report = run_core_logic(
+        source_path,
+        output_file,
+        include_mode=True,
+        manual_selections=manual_selections,
+        manual_exclusions=manual_exclusions
+    )
+
+    # file2.txt was explicitly selected and should be present
+    assert "file: dir1/file2.txt" in report
+    # file3.txt was explicitly deselected and should NOT be present
+    assert "file: dir1/file3.txt" not in report
+
+
+def test_exclude_mode_selection(tmp_path: Path):
+    """
+    Test exclude mode: The user unchecks a directory and a specific file type.
+    The output should not contain them.
+    """
+    source_path = Path(__file__).parent / "test_data" / "exclude_mode_input"
+    output_file = tmp_path / "output.txt"
+
+    dir_path = source_path / "dir"
+    log_file_path = source_path / "file1.log"
+
+    # Mimic UI behavior: user unchecks the 'dir' directory and '*.log' files.
+    # In exclude mode, manual_selections are the items to BE EXCLUDED.
+    manual_selections = {str(dir_path), str(log_file_path)}
+
+    report = run_core_logic(
+        source_path,
+        output_file,
+        include_mode=False,
+        manual_selections=manual_selections,
+    )
+
+    # The python file was not excluded and should be present
+    assert "file: file2.py" in report
+    assert "This is a python file" in report
+    # The log file was explicitly excluded
+    assert "file: file1.log" not in report
+    # The text file is in an excluded directory
+    assert "file: dir/file3.txt" not in report

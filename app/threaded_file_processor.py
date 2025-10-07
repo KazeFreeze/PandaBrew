@@ -46,6 +46,7 @@ class ThreadedFileProcessor(QObject):
                 source_path_str=process_params["source_path"],
                 include_mode=process_params["include_mode"],
                 manual_selections_str=process_params["manual_selections"],
+                manual_exclusions_str=process_params["manual_exclusions"],
                 include_patterns=process_params["include_patterns"],
                 exclude_patterns=process_params["exclude_patterns"],
                 filenames_only=process_params["filenames_only"],

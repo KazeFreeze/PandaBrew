@@ -99,6 +99,7 @@ def generate_report_to_file(
     source_path_str: str,
     include_mode: bool,
     manual_selections_str: Set[str],
+    manual_exclusions_str: Set[str],
     include_patterns: List[str],
     exclude_patterns: List[str],
     filenames_only: bool,
@@ -108,6 +109,7 @@ def generate_report_to_file(
 ) -> int:
     source_path = Path(source_path_str)
     manual_selections = {Path(p) for p in manual_selections_str}
+    manual_exclusions = {Path(p) for p in manual_exclusions_str}
     if progress_callback: progress_callback(0, "Gathering and filtering files...")
 
     all_files = {p for p in source_path.rglob("*") if p.is_file()}
@@ -120,6 +122,8 @@ def generate_report_to_file(
             for path in all_files:
                 if any(path == ms or path.is_relative_to(ms) for ms in manual_selections):
                     initial_set.add(path)
+        # Now, remove any files that were explicitly deselected.
+        initial_set.difference_update(manual_exclusions)
     else: # Exclude mode
         initial_set = all_files.copy()
         if manual_selections:

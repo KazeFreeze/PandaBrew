@@ -2,6 +2,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QLineEdit,
     QTextEdit, QRadioButton, QCheckBox, QTreeView, QGroupBox, QFrame
 )
+from pathlib import Path
 from .qt_tree_view_manager import QtTreeViewManager
 
 class TabWidget(QWidget):
@@ -109,16 +110,30 @@ class TabWidget(QWidget):
         self.deselect_all_btn.clicked.connect(self.tree_view_manager.deselect_all)
 
     def get_state(self) -> dict:
-        """Returns the current state of the tab's UI controls."""
+        """
+        Returns the current state of the tab's UI controls.
+        For include mode, this calculates the set of deselected (excluded) paths.
+        """
+        checked_paths = self.tree_view_manager.checked_paths
+        manual_exclusions = set()
+        source_path_str = self.source_entry.text()
+
+        # The deselection logic is only needed for "include" mode.
+        # We derive exclusions from the items loaded in the tree view to avoid slow FS scans.
+        if self.include_radio.isChecked():
+            all_loaded_paths = set(self.tree_view_manager.path_to_item_map.keys())
+            manual_exclusions = all_loaded_paths - checked_paths
+
         return {
-            "source_path": self.source_entry.text(),
+            "source_path": source_path_str,
             "output_path": self.output_entry.text(),
             "include_patterns": self.include_text.toPlainText().splitlines(),
             "exclude_patterns": self.exclude_text.toPlainText().splitlines(),
             "include_mode": self.include_radio.isChecked(),
             "filenames_only": self.filenames_only_check.isChecked(),
             "show_excluded": self.show_excluded_check.isChecked(),
-            "manual_selections": list(self.tree_view_manager.checked_paths)
+            "manual_selections": list(checked_paths),
+            "manual_exclusions": list(manual_exclusions),
         }
 
     def set_state(self, state: dict):
