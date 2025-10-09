@@ -309,3 +309,41 @@ def test_exclude_mode_performance_with_large_dataset(tmp_path: Path):
     # Assert that the total number of files is correct
     # Total files = 5 * 500 = 2500. Excluded files = 2 * 500 = 1000. Expected = 1500.
     assert report.count("--- file:") == 1500
+
+
+def test_include_mode_performance_with_small_selection(tmp_path: Path):
+    """
+    Test performance of include mode with a small selection from a large project.
+    This test would be slow without the include mode optimization.
+    """
+    source_path = tmp_path / "large_project_include"
+    source_path.mkdir()
+
+    # Create a large number of files
+    total_dirs = 10
+    files_per_dir = 200
+    for i in range(total_dirs):
+        dir_path = source_path / f"dir_{i}"
+        dir_path.mkdir()
+        for j in range(files_per_dir):
+            (dir_path / f"file_{j}.txt").write_text(f"content_{i}_{j}")
+
+    output_file = tmp_path / "output.txt"
+
+    # Select only one of the directories
+    dir_to_include = source_path / "dir_4"
+    manual_selections = {str(dir_to_include)}
+
+    report = run_core_logic(
+        source_path,
+        output_file,
+        include_mode=True,
+        manual_selections=manual_selections,
+    )
+
+    # Assert that a file from the included directory is present
+    assert "file: dir_4/file_0.txt" in report
+    # Assert that a file from a non-included directory is NOT present
+    assert "file: dir_0/file_0.txt" not in report
+    # Assert that the total number of files is correct (should only be files_per_dir)
+    assert report.count("--- file:") == files_per_dir

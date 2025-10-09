@@ -112,27 +112,37 @@ def generate_report_to_file(
     manual_exclusions = {Path(p) for p in manual_exclusions_str}
     if progress_callback: progress_callback(0, "Gathering and filtering files...")
 
-    all_files = {p for p in source_path.rglob("*") if p.is_file()}
-
     # 1. Determine the initial set of files based on manual selections
     if progress_callback: progress_callback(5, "Applying manual selections...")
     initial_set = set()
+    all_files = set()  # Will be populated as needed
+
     if include_mode:
+        # OPTIMIZED: Iterate only over selected items, not the whole project
         if manual_selections:
-            for path in all_files:
-                if any(path == ms or path.is_relative_to(ms) for ms in manual_selections):
-                    initial_set.add(path)
-        # Now, remove any files that were explicitly deselected.
+            for selection in manual_selections:
+                if not selection.exists(): continue
+                if selection.is_file():
+                    initial_set.add(selection)
+                elif selection.is_dir():
+                    for path in selection.rglob("*"):
+                        if path.is_file():
+                            initial_set.add(path)
+
         initial_set.difference_update(manual_exclusions)
+
+        # The full file list is only needed for showing the full tree structure
+        # or for applying global include patterns. Avoid this scan if possible.
+        if show_excluded or include_patterns:
+            all_files = {p for p in source_path.rglob("*") if p.is_file()}
+        else:
+            all_files = initial_set.copy()
+
     else:  # Exclude mode
+        all_files = {p for p in source_path.rglob("*") if p.is_file()}
         initial_set = all_files.copy()
 
-        # In exclude mode, `manual_selections` are the items to EXCLUDE.
-        # `manual_exclusions` are items that were UNCHECKED, so they need to be RE-INCLUDED.
-
         if manual_selections:
-            # Optimization: Prune the exclusion list. If '/a' is excluded,
-            # there's no need to also check against '/a/b'.
             sorted_selections = sorted(list(manual_selections), key=lambda p: len(p.parts))
             exclusion_roots = set()
             for path in sorted_selections:
@@ -140,7 +150,6 @@ def generate_report_to_file(
                     exclusion_roots.add(path)
 
             if exclusion_roots:
-                # Convert Path objects to strings for much faster startswith checks.
                 import os
                 dir_roots = {str(p) + os.path.sep for p in exclusion_roots if p.is_dir()}
                 file_roots = {str(p) for p in exclusion_roots if p.is_file()}
@@ -152,10 +161,9 @@ def generate_report_to_file(
                         to_remove.add(path)
                 initial_set.difference_update(to_remove)
 
-        # Re-include any files that were explicitly unchecked by the user.
         initial_set.update(manual_exclusions)
 
-    files_in_scope = initial_set.copy() # For the tree view
+    files_in_scope = initial_set.copy()
 
     # 2. Apply exclude patterns
     if progress_callback: progress_callback(10, "Applying exclude patterns...")
