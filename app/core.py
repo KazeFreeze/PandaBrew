@@ -5,7 +5,6 @@ from typing import List, Set, Optional, Callable, IO
 import threading
 
 def _matches_pattern(path: Path, patterns: List[str]) -> bool:
-    """Checks if a path or its name matches any of the given glob patterns."""
     path_str = str(path)
     for pattern in patterns:
         if fnmatch.fnmatch(path_str, pattern) or fnmatch.fnmatch(path.name, pattern):
@@ -23,52 +22,39 @@ def _write_project_structure(
     f: IO[str],
     source_path: Path,
     files_to_process: Set[Path],
-    all_files_in_scope: Set[Path],
     show_excluded: bool,
 ):
     f.write("### Project Structure\n\n")
-
-    # If not showing excluded, the tree should only contain files to process and their parents.
-    tree_items = all_files_in_scope if show_excluded else files_to_process
-
-    # We need all parent directories to build the tree structure correctly.
-    required_dirs = set()
-    for item in tree_items:
-        parent = item.parent
-        while parent.is_relative_to(source_path) and parent != source_path:
-            required_dirs.add(parent)
-            parent = parent.parent
-
-    tree_nodes = tree_items.union(required_dirs)
-
     def build_tree(current_path, prefix=""):
         try:
-            children = sorted(
-                [p for p in current_path.iterdir() if p in tree_nodes or p.is_dir() and any(n.is_relative_to(p) for n in tree_nodes)],
-                key=lambda p: (p.is_file(), p.name.lower())
-            )
+            children = sorted(list(current_path.iterdir()), key=lambda p: (p.is_file(), p.name.lower()))
         except (IOError, PermissionError):
             return
-
         for i, child in enumerate(children):
             is_last = i == (len(children) - 1)
             connector = "└── " if is_last else "├── "
+            is_processed = child in files_to_process
+            is_parent_of_processed = False
+            if child.is_dir():
+                is_parent_of_processed = any(p.is_relative_to(child) for p in files_to_process)
+
+            if not show_excluded and not is_processed and not is_parent_of_processed:
+                continue
 
             f.write(f"{prefix}{connector}{child.name}")
 
-            if child.is_file():
-                if child not in files_to_process:
-                    f.write(" [EXCLUDED]")
+            if child.is_file() and not is_processed:
+                f.write(" [EXCLUDED]\n")
+            else:
                 f.write("\n")
-            else: # is_dir()
-                f.write("\n")
-                new_prefix = prefix + ("    " if is_last else "│   ")
-                build_tree(child, new_prefix)
 
+            if child.is_dir():
+                if show_excluded or is_parent_of_processed:
+                    new_prefix = prefix + ("    " if is_last else "│   ")
+                    build_tree(child, new_prefix)
     f.write(f"{source_path.name}\n")
     build_tree(source_path)
     f.write("\n")
-
 
 def _write_file_contents(
     f: IO[str],
@@ -110,54 +96,46 @@ def generate_report_to_file(
     manual_selections = {Path(p) for p in manual_selections_str}
     if progress_callback: progress_callback(0, "Gathering and filtering files...")
 
-    all_files = {p for p in source_path.rglob("*") if p.is_file()}
+    files_to_process = set()
 
-    # 1. Determine the initial set of files based on manual selections
-    if progress_callback: progress_callback(5, "Applying manual selections...")
-    initial_set = set()
-    if include_mode:
-        if manual_selections:
-            for path in all_files:
-                if any(path == ms or path.is_relative_to(ms) for ms in manual_selections):
-                    initial_set.add(path)
-    else: # Exclude mode
-        initial_set = all_files.copy()
-        if manual_selections:
-            to_remove = set()
-            for path in initial_set:
-                if any(path == ms or path.is_relative_to(ms) for ms in manual_selections):
-                    to_remove.add(path)
-            initial_set.difference_update(to_remove)
+    all_paths = list(source_path.rglob("*"))
+    total_paths = len(all_paths)
 
-    files_in_scope = initial_set.copy() # For the tree view
+    for i, path in enumerate(all_paths):
+        if cancel_event.is_set(): return 0
+        if not path.is_file(): continue
 
-    # 2. Apply exclude patterns
-    if progress_callback: progress_callback(10, "Applying exclude patterns...")
-    if exclude_patterns:
-        files_in_scope = {
-            p for p in files_in_scope
-            if not _matches_pattern(p.relative_to(source_path), exclude_patterns)
-        }
+        if progress_callback and i % 50 == 0:
+            progress = (i / total_paths) * 20 if total_paths > 0 else 0
+            progress_callback(progress, f"Filtering... ({i}/{total_paths})")
 
-    # 3. Apply include patterns (can add files back)
-    if progress_callback: progress_callback(15, "Applying include patterns...")
-    if include_patterns:
-        for path in all_files:
-            if _matches_pattern(path.relative_to(source_path), include_patterns):
-                files_in_scope.add(path)
+        is_manually_in: bool
+        if not manual_selections:
+            is_manually_in = not include_mode
+        else:
+            if include_mode:
+                is_manually_in = any(str(path).startswith(str(ms)) for ms in manual_selections)
+            else:
+                is_manually_in = not any(str(path).startswith(str(ms)) for ms in manual_selections)
 
-    files_to_process = files_in_scope
+        relative_path = path.relative_to(source_path)
+        is_excluded = _matches_pattern(relative_path, exclude_patterns)
+        is_included = _matches_pattern(relative_path, include_patterns)
+
+        if is_included:
+            files_to_process.add(path)
+        elif is_manually_in and not is_excluded:
+            files_to_process.add(path)
+
     files_to_process_sorted = sorted(list(files_to_process))
     if cancel_event.is_set(): return 0
 
     with open(output_file, "w", encoding="utf-8", errors="ignore") as f:
         _write_report_header(f, include_mode)
-        if progress_callback: progress_callback(20, "Writing project structure...")
+        if progress_callback: progress_callback(25, "Writing project structure...")
 
-        _write_project_structure(f, source_path, files_to_process, all_files, show_excluded)
+        _write_project_structure(f, source_path, files_to_process, show_excluded)
 
         if not filenames_only:
             _write_file_contents(f, files_to_process_sorted, source_path, cancel_event, progress_callback)
-
-    if progress_callback: progress_callback(100, "Report generated.")
     return len(files_to_process_sorted)
