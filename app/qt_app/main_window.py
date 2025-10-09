@@ -5,6 +5,8 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QWidget,
     QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
     QSplitter,
     QFileDialog,
     QMessageBox,
@@ -39,15 +41,46 @@ class MainWindow(QMainWindow):
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
-        self.layout = QVBoxLayout(self.central_widget)
+
+        # Main horizontal layout
+        self.main_layout = QHBoxLayout(self.central_widget)
+        self.main_layout.setContentsMargins(10, 10, 10, 10)
+        self.main_layout.setSpacing(5)
 
         self.tab_widget = QTabWidget()
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
-        self.layout.addWidget(self.tab_widget)
+        self.main_layout.addWidget(self.tab_widget)
+
+        self._create_tab_control_buttons()
 
         self.tabs = {}
         self.add_new_tab()
+
+    def _create_tab_control_buttons(self):
+        """Creates the '+', 'x', and '?' buttons for tab management."""
+        button_container = QWidget()
+        button_layout = QVBoxLayout(button_container)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(5)
+
+        self.add_tab_btn = QPushButton("+")
+        self.add_tab_btn.clicked.connect(self.add_new_tab)
+        self.close_tab_btn = QPushButton("✕")
+        self.close_tab_btn.clicked.connect(self.close_current_tab)
+        self.help_btn = QPushButton("?")
+        self.help_btn.clicked.connect(self.show_filter_help)
+
+        self.add_tab_btn.setFixedSize(30, 30)
+        self.close_tab_btn.setFixedSize(30, 30)
+        self.help_btn.setFixedSize(30, 30)
+
+        button_layout.addWidget(self.add_tab_btn)
+        button_layout.addWidget(self.close_tab_btn)
+        button_layout.addStretch()
+        button_layout.addWidget(self.help_btn)
+
+        self.main_layout.addWidget(button_container)
 
     def _load_stylesheet(self):
         style_file = QFile("app/qt_app/styles.qss")
@@ -193,3 +226,35 @@ class MainWindow(QMainWindow):
                 return
             self.file_processor.cancel_processing()
         self.config_manager.save_app_state()
+
+    def close_current_tab(self):
+        """Closes the currently active tab."""
+        current_index = self.tab_widget.currentIndex()
+        if current_index != -1:
+            self.close_tab(current_index)
+
+    def show_filter_help(self):
+        """Displays a dialog with help text for filter patterns."""
+        pipeline_explanation = (
+            "<b>Filter Precedence Pipeline</b><br><br>"
+            "Filters are applied in the following order:<br><br>"
+            "1. <b>Manual Selections</b>: The initial set of files is determined by the "
+            "checked items in the tree view and the 'Include/Exclude' mode.<br><br>"
+            "2. <b>Exclude Patterns</b>: Files matching these patterns are <b>removed</b> from the set.<br><br>"
+            "3. <b>Include Patterns</b>: Files matching these patterns are <b>added back</b> to the set, "
+            "overriding any previous exclusions."
+        )
+        syntax_explanation = (
+            "<br><br><b>Pattern Syntax</b><br><br>"
+            "Patterns use glob-style matching, similar to .gitignore.<br><br>"
+            "- <code>*</code> matches everything<br>"
+            "- <code>?</code> matches any single character<br>"
+            "- <code>[seq]</code> matches any character in seq<br>"
+            "- <code>[!seq]</code> matches any character not in seq<br><br>"
+            "<b>Examples</b><br><br>"
+            "- <code>*.py</code>: Matches all Python files.<br>"
+            "- <code>src/*</code>: Matches all files in the <code>src</code> directory.<br>"
+            "- <code>__pycache__/</code>: Matches the pycache directory.<br>"
+        )
+        help_text = pipeline_explanation + syntax_explanation
+        QMessageBox.information(self, "Filter Help", help_text)

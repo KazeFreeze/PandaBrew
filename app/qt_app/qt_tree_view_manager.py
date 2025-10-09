@@ -74,6 +74,7 @@ class QtTreeViewManager(QWidget):
                 child = parent_item.child(row)
                 if child.isCheckable() and child.checkState() != state:
                     child.setCheckState(state)
+                self._update_children_state(child, state)
 
     def _update_parent_state(self, item):
         """Recursively updates the check state of parent items."""
