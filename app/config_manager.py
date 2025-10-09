@@ -2,10 +2,9 @@ import json
 import hashlib
 from pathlib import Path
 from typing import Dict, Any, TYPE_CHECKING, Optional
-import tkinter as tk
 
 if TYPE_CHECKING:
-    from .app import ModernCodeExtractorGUI
+    from .qt_app.main_window import MainWindow
 
 CONFIG_FILE_NAME = ".panda_brew_config.json"
 
@@ -13,7 +12,7 @@ class ConfigManager:
     """
     Manages loading and saving of the application's configuration.
     """
-    def __init__(self, app_instance: "ModernCodeExtractorGUI"):
+    def __init__(self, app_instance: "MainWindow"):
         self.app = app_instance
         self.config_file = Path.home() / CONFIG_FILE_NAME
 
@@ -52,32 +51,30 @@ class ConfigManager:
         """Saves the current application state to the JSON file."""
         try:
             for tab_data in self.app.tabs.values():
-                if tab_data["source_path"].get():
+                if tab_data["control_panel"].source_path.text():
                     self.save_selections(tab_data)
 
             open_tabs_info = []
             for t in self.app.tabs.values():
-                if not t["source_path"].get(): continue
-
-                include_text = t["include_patterns_text"].get("1.0", "end-1c") if t.get("include_patterns_text") else ""
-                exclude_text = t["exclude_patterns_text"].get("1.0", "end-1c") if t.get("exclude_patterns_text") else ""
+                cp = t["control_panel"]
+                if not cp.source_path.text(): continue
 
                 open_tabs_info.append({
-                    "source": t["source_path"].get(),
-                    "output": t["output_path"].get(),
-                    "include_patterns": include_text,
-                    "exclude_patterns": exclude_text,
+                    "source": cp.source_path.text(),
+                    "output": cp.output_path.text(),
+                    "include_patterns": cp.include_patterns_text.toPlainText(),
+                    "exclude_patterns": cp.exclude_patterns_text.toPlainText(),
                 })
 
             active_tab = self.app.get_active_tab()
-            active_tab_source = active_tab["source_path"].get() if active_tab and active_tab["source_path"].get() else None
+            active_tab_source = active_tab["control_panel"].source_path.text() if active_tab else None
 
             config_to_save = {
                 "open_tabs": open_tabs_info[-10:],
                 "selections": self.app.config.get("selections", {}),
-                "include_mode": self.app.include_mode.get(),
-                "filenames_only": self.app.filenames_only.get(),
-                "show_excluded_in_structure": self.app.show_excluded_in_structure.get(),
+                "include_mode": self.app.include_mode,
+                "filenames_only": self.app.filenames_only,
+                "show_excluded_in_structure": self.app.show_excluded_in_structure,
                 "active_tab_source": active_tab_source,
             }
 
@@ -88,12 +85,12 @@ class ConfigManager:
 
     def save_selections(self, tab_data: Dict[str, Any]) -> None:
         """Saves the current checked paths for a tab's source directory."""
-        source_path_str = tab_data["source_path"].get()
+        source_path_str = tab_data["control_panel"].source_path.text()
         if not source_path_str: return
 
         source_hash = hashlib.md5(source_path_str.encode()).hexdigest()
         tree_manager = tab_data["tree_view_manager"]
-        relative_checked_paths = [str(Path(p).relative_to(source_path_str)) for p in tree_manager.checked_paths]
+        relative_checked_paths = [str(Path(p).relative_to(source_path_str)) for p in tree_manager.get_checked_paths()]
 
         if "selections" not in self.app.config:
             self.app.config["selections"] = {}
@@ -101,12 +98,12 @@ class ConfigManager:
         if source_hash not in self.app.config["selections"] or not isinstance(self.app.config["selections"][source_hash], dict):
             self.app.config["selections"][source_hash] = {"include_checked": [], "exclude_checked": []}
 
-        mode_key = "include_checked" if self.app.include_mode.get() else "exclude_checked"
+        mode_key = "include_checked" if self.app.include_mode else "exclude_checked"
         self.app.config["selections"][source_hash][mode_key] = sorted(relative_checked_paths)
 
     def load_selections(self, tab_data: Dict[str, Any]) -> None:
         """Loads checked paths for a tab's source directory based on the current mode."""
-        source_path_str = tab_data["source_path"].get()
+        source_path_str = tab_data["control_panel"].source_path.text()
         if not source_path_str: return
 
         source_hash = hashlib.md5(source_path_str.encode()).hexdigest()
@@ -117,13 +114,15 @@ class ConfigManager:
             self.app.config["selections"][source_hash] = project_selections
 
         tree_manager = tab_data["tree_view_manager"]
-        tree_manager.checked_paths.clear()
+        # This part of the logic might need to be more sophisticated,
+        # for now, we just get the paths. The UI doesn't yet use this to set checks.
 
         if not isinstance(project_selections, dict): return
 
-        mode_key = "include_checked" if self.app.include_mode.get() else "exclude_checked"
+        mode_key = "include_checked" if self.app.include_mode else "exclude_checked"
         selections = project_selections.get(mode_key, [])
 
+        # The logic to apply these loaded selections to the QTreeView would need to be added.
+        # For now, this method doesn't crash, but it doesn't visually update the tree.
         source_path = Path(source_path_str)
-        for rel_path in selections:
-            tree_manager.checked_paths.add(str(source_path / rel_path))
+        # tree_manager.checked_paths = {str(source_path / rel_path) for rel_path in selections}
