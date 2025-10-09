@@ -1,2 +1,1 @@
-ttkbootstrap
-pywinstyles
+PySide6
