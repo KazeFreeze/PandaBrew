@@ -1,7 +1,7 @@
 from pathlib import Path
 import threading
 from textual.app import App, ComposeResult
-from textual.containers import Container, Vertical, Horizontal
+from textual.containers import Container, Vertical
 from textual.widgets import (
     Header,
     Footer,
@@ -13,9 +13,30 @@ from textual.widgets import (
     ProgressBar,
     RadioButton,
     RadioSet,
-    Static,
 )
+from textual.widgets.tree import TreeNode
+from rich.text import Text
+
 from app.core import generate_report_to_file
+
+
+class SelectableDirectoryTree(DirectoryTree):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.selected_nodes = set()
+
+    def render_label(self, node: TreeNode, base_style, style):
+        label = super().render_label(node, base_style, style)
+        if node.data.path in self.selected_nodes:
+            label.stylize("reverse")
+        return label
+
+    def on_tree_node_selected(self, event: DirectoryTree.FileSelected):
+        if event.node.data.path in self.selected_nodes:
+            self.selected_nodes.remove(event.node.data.path)
+        else:
+            self.selected_nodes.add(event.node.data.path)
+        self.refresh()
 
 
 class TUI(App):
@@ -42,7 +63,8 @@ class TUI(App):
                 yield Button("Generate Report", id="generate")
                 yield ProgressBar(id="progress", total=100, show_eta=False)
             with Vertical(id="right-pane"):
-                yield DirectoryTree(path=Path.cwd(), id="tree")
+                yield Label("Navigate with arrows, press Enter to select.")
+                yield SelectableDirectoryTree(path=Path.cwd(), id="tree")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -52,7 +74,9 @@ class TUI(App):
         if event.input.id == "source_dir":
             source_path = Path(event.value)
             if source_path.is_dir():
-                self.query_one(DirectoryTree).path = source_path
+                tree = self.query_one(SelectableDirectoryTree)
+                tree.path = source_path
+                tree.focus()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "generate":
@@ -66,8 +90,8 @@ class TUI(App):
         include_mode = self.query_one("#include_mode").value
         filenames_only = self.query_one("#filenames_only").value
         show_excluded = self.query_one("#show_excluded").value
-        tree = self.query_one(DirectoryTree)
-        manual_selections = {str(node.path) for node in tree.selected_nodes}
+        tree = self.query_one(SelectableDirectoryTree)
+        manual_selections = {str(path) for path in tree.selected_nodes}
 
         def read_patterns(path: str) -> list[str]:
             if not path:

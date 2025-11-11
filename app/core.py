@@ -51,8 +51,8 @@ def _write_project_structure(
             should_show = is_processed or is_parent_of_processed or is_explicitly_excluded
 
             if not should_show:
-                if child.is_dir() and any(p.is_relative_to(child) for p in all_files if show_excluded):
-                     pass
+                if show_excluded and child.is_dir() and any(p.is_relative_to(child) for p in all_files):
+                    pass
                 else:
                     continue
 
