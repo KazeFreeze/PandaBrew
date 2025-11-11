@@ -19,7 +19,14 @@ def main():
     parser.add_argument("--exclude-file", type=str, help="Path to a file with exclude patterns.")
     parser.add_argument("--filenames-only", action="store_true", help="Extract filenames only.")
     parser.add_argument("--show-excluded", action="store_true", help="Show excluded files in the structure view.")
+    parser.add_argument("--tui", action="store_true", help="Launch the Textual TUI.")
     args = parser.parse_args()
+
+    if args.tui:
+        from tui import TUI
+        app = TUI()
+        app.run()
+        sys.exit(0)
 
     source_path = Path(args.source)
     if not source_path.is_dir():
@@ -71,6 +78,7 @@ def main():
     except Exception as e:
         print(f"\nAn error occurred during extraction: {e}", file=sys.stderr)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
