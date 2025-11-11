@@ -21,13 +21,11 @@ def _write_report_header(f: IO[str], include_mode: bool):
 def _write_project_structure(
     f: IO[str],
     source_path: Path,
-    files_to_process: Set[Path],
+    all_files: Set[Path],
+    processed_files: Set[Path],
     show_excluded: bool,
-    all_files: Optional[Set[Path]] = None,
 ):
     f.write("### Project Structure\n\n")
-    if all_files is None:
-        all_files = set()
 
     def build_tree(current_path, prefix=""):
         try:
@@ -38,37 +36,32 @@ def _write_project_structure(
         for i, child in enumerate(children):
             is_last = i == (len(children) - 1)
             connector = "└── " if is_last else "├── "
-            is_processed = child in files_to_process
 
-            is_parent_of_processed = False
+            is_processed = child in processed_files
+            is_ancestor_of_processed = False
             if child.is_dir():
-                is_parent_of_processed = any(p.is_relative_to(child) for p in files_to_process)
+                is_ancestor_of_processed = any(p.is_relative_to(child) for p in processed_files)
 
-            # A file is considered for showing if it's processed, a parent of a processed file,
-            # or if show_excluded is True and it's a file that was filtered out.
-            is_explicitly_excluded = show_excluded and child.is_file() and child in all_files and not is_processed
-
-            should_show = is_processed or is_parent_of_processed or is_explicitly_excluded
+            # If show_excluded is True, we show everything.
+            # Otherwise, only show processed files or their parent directories.
+            should_show = show_excluded or is_processed or is_ancestor_of_processed
 
             if not should_show:
-                if show_excluded and child.is_dir() and any(p.is_relative_to(child) for p in all_files):
-                    pass
-                else:
-                    continue
+                continue
 
             f.write(f"{prefix}{connector}{child.name}")
 
             if child.is_file():
-                if not is_processed:
-                    f.write(" [EXCLUDED]\n")
-                else:
-                    f.write("\n")
+                f.write(" [EXCLUDED]\n" if not is_processed else "\n")
             else:
                 f.write("\n")
 
             if child.is_dir():
-                new_prefix = prefix + ("    " if is_last else "│   ")
-                build_tree(child, new_prefix)
+                # Recurse if the directory is an ancestor of a processed file,
+                # or if we are showing all excluded files.
+                if is_ancestor_of_processed or show_excluded:
+                    new_prefix = prefix + ("    " if is_last else "│   ")
+                    build_tree(child, new_prefix)
 
     f.write(f"{source_path.name}\n")
     build_tree(source_path)
@@ -100,13 +93,13 @@ def _write_file_contents(
 
 def _gather_files_recursively(
     current_path: Path,
-    cancel_event: threading.Event,
+    cancel_event: threading.Event
 ) -> Set[Path]:
     """
-    Recursively gather all files from a starting path.
+    Recursively gather all files, without any filtering.
     """
     files = set()
-    if cancel_event.is_set():
+    if cancel_event.is_set() or not current_path.is_dir():
         return files
 
     try:
@@ -136,38 +129,45 @@ def generate_report_to_file(
 ) -> int:
     source_path = Path(source_path_str)
     manual_selections = {Path(p) for p in manual_selections_str}
-    if progress_callback: progress_callback(0, "Gathering and filtering files...")
+    if progress_callback: progress_callback(0, "Gathering all files...")
 
     all_files = _gather_files_recursively(source_path, cancel_event)
+    if cancel_event.is_set(): return 0
 
-    # Apply filters: (Base - Excluded) + Included
-    included_by_pattern = {f for f in all_files if _matches_pattern(f.relative_to(source_path), include_patterns)}
-    excluded_by_pattern = {f for f in all_files if _matches_pattern(f.relative_to(source_path), exclude_patterns)}
+    if progress_callback: progress_callback(10, "Filtering files...")
 
     files_to_process = set()
-    if include_mode:
-        base_files = set()
-        if manual_selections:
-            for item in manual_selections:
-                if item.is_dir():
-                    base_files.update(f for f in all_files if f.is_relative_to(item))
-                elif item.is_file() and item in all_files:
-                    base_files.add(item)
-        else:
-            # If no manual selections, the base is determined by include patterns.
-            base_files = included_by_pattern
+    for file_path in all_files:
+        if cancel_event.is_set(): break
+        relative_path = file_path.relative_to(source_path)
 
-        files_to_process = (base_files - excluded_by_pattern) | included_by_pattern
-    else:  # Exclude mode
-        base_files = all_files
-        manually_excluded = set()
-        for item in manual_selections:
-            if item.is_dir():
-                manually_excluded.update(f for f in all_files if f.is_relative_to(item))
-            elif item.is_file() and item in all_files:
-                manually_excluded.add(item)
+        # --- Filtering Logic ---
+        # Rule 1: Include patterns always win.
+        if _matches_pattern(relative_path, include_patterns):
+            files_to_process.add(file_path)
+            continue
 
-        files_to_process = (base_files - excluded_by_pattern - manually_excluded) | included_by_pattern
+        # Rule 2: Exclude patterns are checked next.
+        if _matches_pattern(relative_path, exclude_patterns):
+            continue
+
+        # Rule 3: Check manual selections.
+        is_manually_selected = any(
+            str(file_path).startswith(str(p)) for p in manual_selections
+        )
+
+        if include_mode:
+            # In include mode, we only add files that are manually selected
+            # (assuming they haven't been filtered out by exclude patterns).
+            if is_manually_selected:
+                files_to_process.add(file_path)
+        else: # Exclude mode
+            # In exclude mode, we add all files EXCEPT those manually unchecked.
+            # The 'manual_selections' in this mode are the ones to *exclude*.
+            if not is_manually_selected:
+                files_to_process.add(file_path)
+
+
 
     files_to_process_sorted = sorted(list(files_to_process))
     if cancel_event.is_set(): return 0
@@ -176,7 +176,7 @@ def generate_report_to_file(
         _write_report_header(f, include_mode)
         if progress_callback: progress_callback(25, "Writing project structure...")
 
-        _write_project_structure(f, source_path, files_to_process, show_excluded, all_files=all_files)
+        _write_project_structure(f, source_path, all_files, files_to_process, show_excluded)
 
         if not filenames_only:
             _write_file_contents(f, files_to_process_sorted, source_path, cancel_event, progress_callback)

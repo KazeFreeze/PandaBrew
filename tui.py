@@ -1,137 +1,172 @@
+import os
 from pathlib import Path
-import threading
+from typing import Set
+
 from textual.app import App, ComposeResult
-from textual.containers import Container, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
-    Header,
-    Footer,
     Button,
     Checkbox,
-    DirectoryTree,
+    Footer,
+    Header,
     Input,
     Label,
-    ProgressBar,
     RadioButton,
     RadioSet,
+    Static,
 )
-from textual.widgets.tree import TreeNode
-from rich.text import Text
 
-from app.core import generate_report_to_file
+from app.config_manager import ConfigManager
+from app.threaded_file_processor import ThreadedFileProcessor
+from utils.widgets import CheckboxDirectoryTree
 
 
-class SelectableDirectoryTree(DirectoryTree):
+class PandaBrewTUI(App):
+    """A Textual TUI for the PandaBrew project extractor."""
+
+    CSS_PATH = "utils/tui.css"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.selected_nodes = set()
+        self.config = ConfigManager()
+        self.source_path = self.config.get("source_directory", str(Path.home()))
+        self.threaded_processor = None
 
-    def render_label(self, node: TreeNode, base_style, style):
-        label = super().render_label(node, base_style, style)
-        if node.data.path in self.selected_nodes:
-            label.stylize("reverse")
-        return label
+    def on_unmount(self) -> None:
+        """Called when the app is unmounted."""
+        self.config.save_config()
 
-    def on_tree_node_selected(self, event: DirectoryTree.FileSelected):
-        if event.node.data.path in self.selected_nodes:
-            self.selected_nodes.remove(event.node.data.path)
-        else:
-            self.selected_nodes.add(event.node.data.path)
-        self.refresh()
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Called when an input value changes."""
+        if event.input.id == "source-directory-input":
+            self.source_path = event.value
+            self.config.set("source_directory", event.value)
+        elif event.input.id == "include-patterns-input":
+            self.config.set("include_patterns", event.value)
+        elif event.input.id == "exclude-patterns-input":
+            self.config.set("exclude_patterns", event.value)
 
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        """Called when a radio button changes."""
+        self.config.set("include_mode", event.radio_set.pressed_button.value)
 
-class TUI(App):
-    TITLE = "PandaBrew"
-    SUB_TITLE = "Selectively extract project source code"
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        """Called when a checkbox changes."""
+        if event.checkbox.id == "filenames-only-checkbox":
+            self.config.set("filenames_only", event.value)
+        elif event.checkbox.id == "show-excluded-checkbox":
+            self.config.set("show_excluded_in_structure", event.value)
 
     def compose(self) -> ComposeResult:
-        yield Header()
-        with Container():
+        """Create child widgets for the app."""
+        yield Header(name="PandaBrew")
+        with Horizontal(id="main-container"):
             with Vertical(id="left-pane"):
                 yield Label("Source Directory:")
-                yield Input(placeholder="/path/to/source", id="source_dir")
-                yield Label("Output File:")
-                yield Input(placeholder="/path/to/output.txt", id="output_file")
-                yield Label("Include Patterns File:")
-                yield Input(placeholder="/path/to/include.txt", id="include_file")
-                yield Label("Exclude Patterns File:")
-                yield Input(placeholder="/path/to/exclude.txt", id="exclude_file")
-                with RadioSet(id="mode"):
-                    yield RadioButton("Include", value=True, id="include_mode")
-                    yield RadioButton("Exclude", id="exclude_mode")
-                yield Checkbox("Filenames only", id="filenames_only")
-                yield Checkbox("Show excluded", id="show_excluded")
-                yield Button("Generate Report", id="generate")
-                yield ProgressBar(id="progress", total=100, show_eta=False)
+                yield Input(
+                    value=self.source_path,
+                    id="source-directory-input",
+                )
+                yield Button("Browse", id="browse-button")
+                with VerticalScroll(id="directory-tree-container"):
+                    yield CheckboxDirectoryTree(self.source_path, id="directory-tree")
             with Vertical(id="right-pane"):
-                yield Label("Navigate with arrows, press Enter to select.")
-                yield SelectableDirectoryTree(path=Path.cwd(), id="tree")
+                with RadioSet(id="mode-selection"):
+                    yield RadioButton("Include checked items", value=True, id="include-mode")
+                    yield RadioButton("Exclude checked items", value=False, id="exclude-mode")
+                yield Label("Include Patterns (comma-separated):")
+                yield Input(id="include-patterns-input", placeholder="e.g., *.py, *.txt")
+                yield Label("Exclude Patterns (comma-separated):")
+                yield Input(id="exclude-patterns-input", placeholder="e.g., *.log, .git*")
+                yield Checkbox("Filenames only", id="filenames-only-checkbox")
+                yield Checkbox("Show excluded in structure", id="show-excluded-checkbox")
+                yield Button("Generate Report", variant="primary", id="generate-button")
+                yield Static(id="status-label")
+
         yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one("#source_dir").focus()
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "source_dir":
-            source_path = Path(event.value)
-            if source_path.is_dir():
-                tree = self.query_one(SelectableDirectoryTree)
-                tree.path = source_path
-                tree.focus()
+        """Called when the app is mounted."""
+        # Load last used settings
+        self.query_one("#include-mode").value = self.config.get("include_mode", True)
+        self.query_one("#exclude-mode").value = not self.config.get(
+            "include_mode", True
+        )
+        self.query_one("#include-patterns-input").value = self.config.get(
+            "include_patterns", ""
+        )
+        self.query_one("#exclude-patterns-input").value = self.config.get(
+            "exclude_patterns", ""
+        )
+        self.query_one("#filenames-only-checkbox").value = self.config.get(
+            "filenames_only", False
+        )
+        self.query_one("#show-excluded-checkbox").value = self.config.get(
+            "show_excluded_in_structure", False
+        )
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "generate":
-            self.run_generation()
+        """Handle button press events."""
+        if event.button.id == "generate-button":
+            self.run_report_generation()
+        elif event.button.id == "browse-button":
+            self.open_file_dialog()
 
-    def run_generation(self) -> None:
-        source_dir = self.query_one("#source_dir").value
-        output_file = self.query_one("#output_file").value
-        include_file = self.query_one("#include_file").value
-        exclude_file = self.query_one("#exclude_file").value
-        include_mode = self.query_one("#include_mode").value
-        filenames_only = self.query_one("#filenames_only").value
-        show_excluded = self.query_one("#show_excluded").value
-        tree = self.query_one(SelectableDirectoryTree)
-        manual_selections = {str(path) for path in tree.selected_nodes}
+    def open_file_dialog(self):
+        """Opens a file dialog to select a directory."""
+        import tkinter as tk
+        from tkinter import filedialog
 
-        def read_patterns(path: str) -> list[str]:
-            if not path:
-                return []
-            try:
-                with open(path, "r") as f:
-                    return [
-                        line.strip()
-                        for line in f
-                        if line.strip() and not line.strip().startswith("#")
-                    ]
-            except FileNotFoundError:
-                return []
+        root = tk.Tk()
+        root.withdraw()
+        directory = filedialog.askdirectory(
+            initialdir=self.source_path,
+            title="Select a directory",
+        )
+        if directory:
+            self.query_one("#source-directory-input").value = directory
 
-        include_patterns = read_patterns(include_file)
-        exclude_patterns = read_patterns(exclude_file)
-        cancel_event = threading.Event()
+    def run_report_generation(self):
+        """Gather settings and run the report generation."""
+        if self.threaded_processor and self.threaded_processor.is_alive():
+            self.threaded_processor.cancel()
+            return
 
-        def progress_callback(progress: float, status: str) -> None:
-            self.call_from_thread(
-                self.query_one(ProgressBar).update, progress=progress
-            )
+        # Gather all the settings from the UI
+        source_path = self.query_one("#source-directory-input").value
+        include_mode = self.query_one("#include-mode").value
+        include_patterns = [
+            p.strip()
+            for p in self.query_one("#include-patterns-input").value.split(",")
+            if p.strip()
+        ]
+        exclude_patterns = [
+            p.strip()
+            for p in self.query_one("#exclude-patterns-input").value.split(",")
+            if p.strip()
+        ]
+        filenames_only = self.query_one("#filenames-only-checkbox").value
+        show_excluded = self.query_one("#show-excluded-checkbox").value
+        selected_paths = self.query_one(CheckboxDirectoryTree).selected_paths
+        output_file = (
+            f"pandabrew_report_{Path(source_path).name}.md"
+        )
 
-        threading.Thread(
-            target=generate_report_to_file,
-            args=(
-                output_file,
-                source_dir,
-                include_mode,
-                manual_selections,
-                include_patterns,
-                exclude_patterns,
-                filenames_only,
-                show_excluded,
-                cancel_event,
-                progress_callback,
-            ),
-        ).start()
+        self.threaded_processor = ThreadedFileProcessor(
+            output_file,
+            source_path,
+            include_mode,
+            selected_paths,
+            include_patterns,
+            exclude_patterns,
+            filenames_only,
+            show_excluded,
+        )
+
+        # Start the thread
+        self.threaded_processor.start()
 
 
 if __name__ == "__main__":
-    app = TUI()
+    app = PandaBrewTUI()
     app.run()

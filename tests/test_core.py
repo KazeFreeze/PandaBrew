@@ -132,3 +132,37 @@ def test_filter_precedence_pipeline(test_project: Path, tmp_path: Path):
     assert "guide.md" not in report
     assert "print('hello')" in report
     assert "def helper(): pass" not in report
+
+
+def test_exclude_mode_inverse_logic(test_project: Path, tmp_path: Path):
+    """
+    Test that exclude mode works as the inverse of include mode.
+    - Manually deselect 'src/main.py'.
+    - Exclude '*.md' files via pattern.
+    - Explicitly include back 'docs/guide.md' via pattern.
+    """
+    output_file = tmp_path / "output.txt"
+    # In exclude mode, manual_selections are the files/folders to *exclude*.
+    manual_selections = {str(test_project / "src" / "main.py")}
+    exclude_patterns = ["*.md"]
+    include_patterns = ["*/guide.md"]
+
+    report = run_core_logic(
+        test_project,
+        output_file,
+        include_mode=False,
+        manual_selections=manual_selections,
+        exclude_patterns=exclude_patterns,
+        include_patterns=include_patterns
+    )
+
+    # guide.md is included due to include pattern precedence
+    assert "guide.md" in report
+    # main.py is excluded due to manual selection
+    assert "main.py" not in report
+    # utils.py is included because it wasn't manually excluded or pattern-excluded
+    assert "utils.py" in report
+    # LICENSE is included
+    assert "LICENSE" in report
+    # .secrets is included
+    assert ".secrets" in report
