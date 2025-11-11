@@ -15,10 +15,13 @@ from textual.widgets import (
     RadioSet,
     Static,
 )
+from textual.containers import Horizontal, Vertical, VerticalScroll
+
 
 from app.config_manager import ConfigManager
 from app.threaded_file_processor import ThreadedFileProcessor
 from utils.widgets import CheckboxDirectoryTree
+from utils.screens import SelectDirectoryScreen
 
 
 class PandaBrewTUI(App):
@@ -105,26 +108,22 @@ class PandaBrewTUI(App):
             "show_excluded_in_structure", False
         )
 
+    def action_open_directory_dialog(self) -> None:
+        """Pushes the directory selection screen."""
+
+        def _callback(path: Path):
+            if path:
+                self.query_one("#source-directory-input").value = str(path)
+                self.query_one(CheckboxDirectoryTree).path = path
+
+        self.push_screen(SelectDirectoryScreen(), _callback)
+
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press events."""
         if event.button.id == "generate-button":
             self.run_report_generation()
         elif event.button.id == "browse-button":
-            self.open_file_dialog()
-
-    def open_file_dialog(self):
-        """Opens a file dialog to select a directory."""
-        import tkinter as tk
-        from tkinter import filedialog
-
-        root = tk.Tk()
-        root.withdraw()
-        directory = filedialog.askdirectory(
-            initialdir=self.source_path,
-            title="Select a directory",
-        )
-        if directory:
-            self.query_one("#source-directory-input").value = directory
+            self.action_open_directory_dialog()
 
     def run_report_generation(self):
         """Gather settings and run the report generation."""
