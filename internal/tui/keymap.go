@@ -14,6 +14,7 @@ type keyMap struct {
 	Export  key.Binding
 	Help    key.Binding
 	Tab     key.Binding
+	NewTab  key.Binding
 	Root    key.Binding
 	Output  key.Binding
 	Include key.Binding
@@ -30,68 +31,72 @@ func (k keyMap) ShortHelp() []key.Binding {
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Left, k.Right},
-		{k.Select, k.Tab, k.Save, k.Export},
-		{k.Root, k.Output, k.Include, k.Exclude},
-		{k.ToggleI, k.ToggleC, k.ToggleX, k.Quit},
+		{k.Select, k.Tab, k.NewTab, k.Save},
+		{k.Export, k.Root, k.Output, k.Include},
+		{k.Exclude, k.ToggleI, k.ToggleC, k.ToggleX},
 	}
 }
 
 var keys = keyMap{
 	Up: key.NewBinding(
 		key.WithKeys("up", "k"),
-		key.WithHelp("↑/k", "up"),
+		key.WithHelp("↑/k", "move up"),
 	),
 	Down: key.NewBinding(
 		key.WithKeys("down", "j"),
-		key.WithHelp("↓/j", "down"),
+		key.WithHelp("↓/j", "move down"),
 	),
 	Left: key.NewBinding(
 		key.WithKeys("left", "h"),
-		key.WithHelp("←/h", "collapse"),
+		key.WithHelp("←/h", "collapse folder"),
 	),
 	Right: key.NewBinding(
 		key.WithKeys("right", "l", "enter"),
-		key.WithHelp("→/l", "expand"),
+		key.WithHelp("→/l/enter", "expand folder"),
 	),
 	Select: key.NewBinding(
 		key.WithKeys(" "),
-		key.WithHelp("space", "select"),
+		key.WithHelp("space", "toggle selection"),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("q", "ctrl+c"),
-		key.WithHelp("q", "quit"),
+		key.WithHelp("q/ctrl+c", "quit app"),
 	),
 	Save: key.NewBinding(
 		key.WithKeys("ctrl+s"),
-		key.WithHelp("ctrl+s", "save"),
+		key.WithHelp("ctrl+s", "save session"),
 	),
 	Export: key.NewBinding(
 		key.WithKeys("ctrl+e"),
-		key.WithHelp("ctrl+e", "export"),
+		key.WithHelp("ctrl+e", "export to file"),
 	),
 	Help: key.NewBinding(
 		key.WithKeys("?"),
-		key.WithHelp("?", "help"),
+		key.WithHelp("?", "toggle help"),
 	),
 	Tab: key.NewBinding(
 		key.WithKeys("tab"),
-		key.WithHelp("tab", "next tab"),
+		key.WithHelp("tab", "switch tab"),
+	),
+	NewTab: key.NewBinding(
+		key.WithKeys("ctrl+n"),
+		key.WithHelp("ctrl+n", "new tab"),
 	),
 	Root: key.NewBinding(
 		key.WithKeys("r"),
-		key.WithHelp("r", "edit root"),
+		key.WithHelp("r", "edit root path"),
 	),
 	Output: key.NewBinding(
 		key.WithKeys("o"),
-		key.WithHelp("o", "edit output"),
+		key.WithHelp("o", "edit output file"),
 	),
 	Include: key.NewBinding(
 		key.WithKeys("f"),
-		key.WithHelp("f", "edit include"),
+		key.WithHelp("f", "edit include patterns"),
 	),
 	Exclude: key.NewBinding(
 		key.WithKeys("g"),
-		key.WithHelp("g", "edit exclude"),
+		key.WithHelp("g", "edit exclude patterns"),
 	),
 	ToggleI: key.NewBinding(
 		key.WithKeys("i"),
@@ -99,10 +104,10 @@ var keys = keyMap{
 	),
 	ToggleC: key.NewBinding(
 		key.WithKeys("c"),
-		key.WithHelp("c", "toggle context"),
+		key.WithHelp("c", "toggle show context"),
 	),
 	ToggleX: key.NewBinding(
 		key.WithKeys("x"),
-		key.WithHelp("x", "toggle excluded"),
+		key.WithHelp("x", "toggle show excluded"),
 	),
 }

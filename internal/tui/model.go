@@ -19,17 +19,22 @@ import (
 
 // AppModel is the single source of truth for the UI state.
 type AppModel struct {
-	Session       *core.Session
-	TabStates     map[string]*TabState
-	Spinner       spinner.Model
-	Progress      progress.Model
-	Help          help.Model
-	Viewport      viewport.Model
-	Loading       bool
-	ShowHelp      bool
-	StatusMessage string
-	Width, Height int
-	keys          keyMap
+	Session         *core.Session
+	TabStates       map[string]*TabState
+	Spinner         spinner.Model
+	Progress        progress.Model
+	Help            help.Model
+	Viewport        viewport.Model
+	Loading         bool
+	ShowHelp        bool
+	ShowNewTab      bool
+	NewTabInput     textinput.Model
+	StatusMessage   string
+	Width, Height   int
+	keys            keyMap
+	ExportProgress  float64
+	ExportTotal     int
+	ExportProcessed int
 }
 
 // TabState holds the UI state for a specific directory space (tab).
@@ -71,13 +76,19 @@ func InitialModel(session *core.Session) AppModel {
 		progress.WithWidth(40),
 	)
 
+	newTabInput := textinput.New()
+	newTabInput.Placeholder = "Enter directory path..."
+	newTabInput.CharLimit = 200
+	newTabInput.Width = 60
+
 	model := AppModel{
-		Session:   session,
-		TabStates: make(map[string]*TabState),
-		Spinner:   s,
-		Progress:  prog,
-		Help:      help.New(),
-		keys:      keys,
+		Session:     session,
+		TabStates:   make(map[string]*TabState),
+		Spinner:     s,
+		Progress:    prog,
+		Help:        help.New(),
+		NewTabInput: newTabInput,
+		keys:        keys,
 	}
 
 	for _, space := range session.Spaces {

@@ -26,9 +26,35 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
 		m.Height = msg.Height
+		m.Help.Width = msg.Width
 	}
 
-	// 1. Handle Inputs (Blocking)
+	// Handle New Tab Input Mode (highest priority)
+	if m.ShowNewTab {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "esc":
+				m.ShowNewTab = false
+				m.NewTabInput.Blur()
+				m.NewTabInput.SetValue("")
+				return m, nil
+			case "enter":
+				path := m.NewTabInput.Value()
+				if path != "" {
+					m.StatusMessage = "Validating path..."
+					return m, validateNewTabCmd(path)
+				}
+				m.ShowNewTab = false
+				m.NewTabInput.Blur()
+				return m, nil
+			}
+		}
+		m.NewTabInput, cmd = m.NewTabInput.Update(msg)
+		return m, cmd
+	}
+
+	// Handle Regular Inputs (second priority)
 	if state != nil && state.ActiveInput > 0 {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
@@ -86,12 +112,47 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.StatusMessage = "Error: " + msg.Err.Error()
 		} else {
-			m.populateChildren(state, msg.Path, msg.Entries)
-			state.rebuildVisibleList()
+			if state != nil {
+				m.populateChildren(state, msg.Path, msg.Entries)
+				state.rebuildVisibleList()
+				m.StatusMessage = fmt.Sprintf("Loaded %d items", len(msg.Entries))
+			}
+		}
+
+	case NewTabValidatedMsg:
+		if msg.Valid {
+			// Add the new space
+			sm := core.NewSessionManager("")
+			newSpace, err := sm.AddSpaceFromPath(m.Session, msg.Path)
+			if err == nil {
+				m.TabStates[newSpace.ID] = newTabState(newSpace)
+				m.StatusMessage = fmt.Sprintf("✓ Opened new tab: %s", filepath.Base(msg.Path))
+				m.ShowNewTab = false
+				m.NewTabInput.Blur()
+				m.NewTabInput.SetValue("")
+				cmds = append(cmds, loadDirectoryCmd(newSpace.RootPath))
+			} else {
+				m.StatusMessage = "Error: " + err.Error()
+			}
+		} else {
+			m.StatusMessage = "Invalid path: " + msg.Error
+			m.ShowNewTab = false
+			m.NewTabInput.Blur()
+			m.NewTabInput.SetValue("")
+		}
+
+	case ExportProgressMsg:
+		m.ExportProcessed = msg.Processed
+		m.ExportTotal = msg.Total
+		if msg.Total > 0 {
+			m.ExportProgress = float64(msg.Processed) / float64(msg.Total)
 		}
 
 	case ExportCompleteMsg:
 		m.Loading = false
+		m.ExportProgress = 0
+		m.ExportTotal = 0
+		m.ExportProcessed = 0
 		if msg.Err != nil {
 			m.StatusMessage = "Failed: " + msg.Err.Error()
 		} else {
@@ -107,6 +168,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Help):
 			m.ShowHelp = !m.ShowHelp
 
+		case key.Matches(msg, m.keys.NewTab):
+			m.ShowNewTab = true
+			m.NewTabInput.Focus()
+			return m, textinput.Blink
+
 		case key.Matches(msg, m.keys.Tab):
 			if len(m.Session.Spaces) > 1 {
 				currIdx := 0
@@ -120,23 +186,33 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Session.ActiveSpaceID = m.Session.Spaces[nextIdx].ID
 				// Init new tab if needed
 				newSpace := m.Session.GetActiveSpace()
-				newState := m.TabStates[newSpace.ID]
-				if len(newState.TreeRoot.Children) == 0 {
-					cmds = append(cmds, loadDirectoryCmd(newSpace.RootPath))
+				if newSpace != nil {
+					newState := m.TabStates[newSpace.ID]
+					if newState != nil && len(newState.TreeRoot.Children) == 0 {
+						cmds = append(cmds, loadDirectoryCmd(newSpace.RootPath))
+					}
 				}
 			}
 
 		case key.Matches(msg, m.keys.Root):
-			focusInput(state, 1)
+			if state != nil {
+				focusInput(state, 1)
+			}
 			return m, textinput.Blink
 		case key.Matches(msg, m.keys.Output):
-			focusInput(state, 2)
+			if state != nil {
+				focusInput(state, 2)
+			}
 			return m, textinput.Blink
 		case key.Matches(msg, m.keys.Include):
-			focusInput(state, 3)
+			if state != nil {
+				focusInput(state, 3)
+			}
 			return m, textinput.Blink
 		case key.Matches(msg, m.keys.Exclude):
-			focusInput(state, 4)
+			if state != nil {
+				focusInput(state, 4)
+			}
 			return m, textinput.Blink
 
 		case key.Matches(msg, m.keys.ToggleI):
@@ -210,7 +286,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Export):
 			if space != nil {
 				m.Loading = true
-				m.StatusMessage = "Exporting..."
+				m.ExportProgress = 0
+				m.StatusMessage = "Starting export..."
 				cmds = append(cmds, runExportCmd(space))
 			}
 		}

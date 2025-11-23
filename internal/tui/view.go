@@ -13,16 +13,21 @@ import (
 
 // View renders the UI.
 func (m AppModel) View() string {
-	space := m.Session.GetActiveSpace()
-	if space == nil {
-		return "No workspace open."
+	// Show new tab overlay
+	if m.ShowNewTab {
+		return m.renderNewTabView()
 	}
-	state := m.TabStates[space.ID]
 
 	// Show help overlay
 	if m.ShowHelp {
 		return m.renderHelpView()
 	}
+
+	space := m.Session.GetActiveSpace()
+	if space == nil {
+		return "No workspace open. Press ctrl+n to create a new tab."
+	}
+	state := m.TabStates[space.ID]
 
 	// 1. Tabs
 	tabs := m.renderTabs()
@@ -38,7 +43,6 @@ func (m AppModel) View() string {
 
 	// Combine
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, tree)
-	// Removed breadcrumbs to return Tabs to prominence and hide the full path
 	main := lipgloss.JoinVertical(lipgloss.Left, tabs, body, footer)
 
 	return main
@@ -47,7 +51,6 @@ func (m AppModel) View() string {
 func (m AppModel) renderTabs() string {
 	var tabs []string
 	for _, s := range m.Session.Spaces {
-		// Just the folder name, not the path
 		name := iconFolder + " " + filepath.Base(s.RootPath)
 		style := styleTab
 		if s.ID == m.Session.ActiveSpaceID {
@@ -55,7 +58,7 @@ func (m AppModel) renderTabs() string {
 		}
 		tabs = append(tabs, style.Render(name))
 	}
-	tabs = append(tabs, styleTab.Render(iconKeyboard+" [Tab] Switch"))
+	tabs = append(tabs, styleTab.Render(iconKeyboard+" [Tab] Switch • [Ctrl+N] New"))
 	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 }
 
@@ -91,9 +94,6 @@ func (m AppModel) renderInput(label string, input textinput.Model, focused bool,
 	labelWithKey := fmt.Sprintf("%s (%s):", label, hotkey)
 	labelStyle := styleInputLabel.Render(labelWithKey)
 
-	// Simplified rendering: No border wrapper, just the input view.
-	// We apply the 'focused' style directly to the input view string if needed,
-	// or rely on the bubble's internal styling (which we set in styles.go).
 	inputView := input.View()
 	if focused {
 		inputView = styleInputBoxFocused.Render(inputView)
@@ -156,10 +156,16 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace) string
 func (m AppModel) renderFooter(space *core.DirectorySpace) string {
 	var sections []string
 
-	// Left: Status message
-	leftSection := m.StatusMessage
-	if m.Loading {
+	// Left: Status message with spinner or progress bar
+	var leftSection string
+	if m.Loading && m.ExportTotal > 0 {
+		// Show progress bar during export
+		progressBar := m.Progress.ViewAs(m.ExportProgress)
+		leftSection = fmt.Sprintf("Exporting: %d/%d %s", m.ExportProcessed, m.ExportTotal, progressBar)
+	} else if m.Loading {
 		leftSection = fmt.Sprintf("%s %s", m.Spinner.View(), m.StatusMessage)
+	} else {
+		leftSection = m.StatusMessage
 	}
 	sections = append(sections, styleStatusLeft.Render(leftSection))
 
@@ -177,7 +183,8 @@ func (m AppModel) renderFooter(space *core.DirectorySpace) string {
 }
 
 func (m AppModel) renderHelpView() string {
-	helpView := m.Help.View(m.keys)
+	// The key change: pass the keymap to the help View method
+	helpView := m.Help.FullHelpView(m.keys.FullHelp())
 
 	title := lipgloss.NewStyle().
 		Bold(true).
@@ -185,12 +192,17 @@ func (m AppModel) renderHelpView() string {
 		Padding(1, 0).
 		Render(iconHelp + " Keyboard Shortcuts")
 
+	description := lipgloss.NewStyle().
+		Foreground(colorGray).
+		Padding(0, 0, 1, 0).
+		Render("Navigation & Selection")
+
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPurple).
-		Padding(1, 2).
-		Width(m.Width - 4).
-		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", helpView))
+		Padding(2, 3).
+		Width(min(m.Width-4, 100)).
+		Render(lipgloss.JoinVertical(lipgloss.Left, title, description, helpView))
 
 	closeHint := lipgloss.NewStyle().
 		Foreground(colorGray).
@@ -202,5 +214,53 @@ func (m AppModel) renderHelpView() string {
 		m.Width, m.Height,
 		lipgloss.Center, lipgloss.Center,
 		lipgloss.JoinVertical(lipgloss.Center, box, closeHint),
+	)
+}
+
+func (m AppModel) renderNewTabView() string {
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(colorPurple).
+		Padding(1, 0).
+		Render(iconFolder + " Open New Tab")
+
+	description := lipgloss.NewStyle().
+		Foreground(colorGray).
+		Padding(0, 0, 1, 0).
+		Render("Enter the full path to a directory:")
+
+	inputBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPurple).
+		Padding(1, 2).
+		Width(min(m.Width-10, 70)).
+		Render(m.NewTabInput.View())
+
+	hints := lipgloss.NewStyle().
+		Foreground(colorGray).
+		Italic(true).
+		MarginTop(1).
+		Render("Enter to confirm • Esc to cancel")
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		description,
+		"",
+		inputBox,
+		"",
+		hints,
+	)
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPurple).
+		Padding(2, 3).
+		Render(content)
+
+	return lipgloss.Place(
+		m.Width, m.Height,
+		lipgloss.Center, lipgloss.Center,
+		box,
 	)
 }
