@@ -4,9 +4,12 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"pandabrew/internal/core"
+
+	// Required for slices.Contains
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -19,6 +22,8 @@ var (
 	colorPurple = lipgloss.Color("#7D56F4")
 	colorGray   = lipgloss.Color("#626262")
 	colorLight  = lipgloss.Color("#FAFAFA")
+	colorGreen  = lipgloss.Color("#42f584")
+	colorYellow = lipgloss.Color("#f5d442")
 
 	styleTab = lipgloss.NewStyle().
 			Padding(0, 1).
@@ -62,9 +67,13 @@ type TabState struct {
 	VisibleNodes []*TreeNode
 	CursorIndex  int
 
-	InputRoot   textinput.Model
-	InputOutput textinput.Model
-	ActiveInput int // 0=None, 1=Root, 2=Output
+	// Inputs
+	InputRoot    textinput.Model
+	InputOutput  textinput.Model
+	InputInclude textinput.Model // Patterns like *.go
+	InputExclude textinput.Model // Patterns like node_modules
+
+	ActiveInput int // 0=None, 1=Root, 2=Output, 3=Include, 4=Exclude
 }
 
 type TreeNode struct {
@@ -97,28 +106,29 @@ func InitialModel(session *core.Session) AppModel {
 }
 
 func newTabState(space *core.DirectorySpace) *TabState {
-	tiRoot := textinput.New()
-	tiRoot.Placeholder = "Root Directory"
-	tiRoot.SetValue(space.RootPath)
-	tiRoot.CharLimit = 100
+	// Helper to create standard inputs
+	newInput := func(placeholder, value string) textinput.Model {
+		t := textinput.New()
+		t.Placeholder = placeholder
+		t.SetValue(value)
+		t.CharLimit = 100
+		return t
+	}
 
-	tiOut := textinput.New()
-	tiOut.Placeholder = "Output File"
-	tiOut.SetValue(space.OutputFilePath)
-	tiOut.CharLimit = 100
+	ts := &TabState{
+		InputRoot:    newInput("Root Directory", space.RootPath),
+		InputOutput:  newInput("Output File", space.OutputFilePath),
+		InputInclude: newInput("*.go, src/", strings.Join(space.Config.IncludePatterns, ", ")),
+		InputExclude: newInput(".git, node_modules", strings.Join(space.Config.ExcludePatterns, ", ")),
+		CursorIndex:  0,
+	}
 
-	rootNode := &TreeNode{
+	// Initialize Tree
+	ts.TreeRoot = &TreeNode{
 		Name:     space.RootPath,
 		FullPath: space.RootPath,
 		IsDir:    true,
 		Expanded: true,
-	}
-
-	ts := &TabState{
-		TreeRoot:    rootNode,
-		InputRoot:   tiRoot,
-		InputOutput: tiOut,
-		CursorIndex: 0,
 	}
 
 	ts.rebuildVisibleList()
@@ -151,43 +161,54 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Height = msg.Height
 	}
 
+	// 1. Handle Inputs (Blocking)
 	if state != nil && state.ActiveInput > 0 {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
 			case "esc":
 				state.ActiveInput = 0
-				state.InputRoot.Blur()
-				state.InputOutput.Blur()
+				blurAll(state)
 				return m, nil
 			case "enter":
 				state.ActiveInput = 0
-				state.InputRoot.Blur()
-				state.InputOutput.Blur()
+				blurAll(state)
+				// Sync values back to Config
 				if state.InputRoot.Value() != space.RootPath {
 					space.RootPath = state.InputRoot.Value()
+					// Reset tree on root change
 					state.TreeRoot = &TreeNode{Name: space.RootPath, FullPath: space.RootPath, IsDir: true, Expanded: true}
 					state.rebuildVisibleList()
 					m.Loading = true
 					cmds = append(cmds, loadDirectoryCmd(space.RootPath))
 				}
-				if state.InputOutput.Value() != space.OutputFilePath {
-					space.OutputFilePath = state.InputOutput.Value()
-				}
-				// FIX: Execute any accumulated commands (like directory reload)
+				space.OutputFilePath = state.InputOutput.Value()
+
+				// Parse comma-separated lists for patterns
+				space.Config.IncludePatterns = splitClean(state.InputInclude.Value())
+				space.Config.ExcludePatterns = splitClean(state.InputExclude.Value())
+
 				return m, tea.Batch(cmds...)
 			}
 		}
-		if state.ActiveInput == 1 {
+
+		// Forward to active input
+		switch state.ActiveInput {
+		case 1:
 			state.InputRoot, cmd = state.InputRoot.Update(msg)
-		} else {
+		case 2:
 			state.InputOutput, cmd = state.InputOutput.Update(msg)
+		case 3:
+			state.InputInclude, cmd = state.InputInclude.Update(msg)
+		case 4:
+			state.InputExclude, cmd = state.InputExclude.Update(msg)
 		}
 		return m, cmd
 	}
 
 	switch msg := msg.(type) {
 
+	// Async Results
 	case DirLoadedMsg:
 		m.Loading = false
 		if msg.Err != nil {
@@ -210,6 +231,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 
+		// Tab Navigation
 		case "tab":
 			if len(m.Session.Spaces) > 1 {
 				currIdx := 0
@@ -221,6 +243,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				nextIdx := (currIdx + 1) % len(m.Session.Spaces)
 				m.Session.ActiveSpaceID = m.Session.Spaces[nextIdx].ID
+				// Init new tab if needed
 				newSpace := m.Session.GetActiveSpace()
 				newState := m.TabStates[newSpace.ID]
 				if len(newState.TreeRoot.Children) == 0 {
@@ -228,19 +251,21 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
+		// Input Hotkeys
 		case "r":
-			if state != nil {
-				state.ActiveInput = 1
-				state.InputRoot.Focus()
-				return m, textinput.Blink
-			}
+			focusInput(state, 1)
+			return m, textinput.Blink
 		case "o":
-			if state != nil {
-				state.ActiveInput = 2
-				state.InputOutput.Focus()
-				return m, textinput.Blink
-			}
+			focusInput(state, 2)
+			return m, textinput.Blink
+		case "f": // "Filter" (Include)
+			focusInput(state, 3)
+			return m, textinput.Blink
+		case "g": // "Global Exclude"
+			focusInput(state, 4)
+			return m, textinput.Blink
 
+		// Toggles
 		case "i":
 			if space != nil {
 				space.Config.IncludeMode = !space.Config.IncludeMode
@@ -254,6 +279,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				space.Config.ShowExcluded = !space.Config.ShowExcluded
 			}
 
+		// Tree Nav
 		case "up", "k":
 			if state != nil && state.CursorIndex > 0 {
 				state.CursorIndex--
@@ -266,19 +292,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case " ":
 			if state != nil && len(state.VisibleNodes) > 0 {
 				node := state.VisibleNodes[state.CursorIndex]
-				p := node.FullPath
-
-				found := false
-				for i, existing := range space.Config.ManualSelections {
-					if existing == p {
-						space.Config.ManualSelections = append(space.Config.ManualSelections[:i], space.Config.ManualSelections[i+1:]...)
-						found = true
-						break
-					}
-				}
-				if !found {
-					space.Config.ManualSelections = append(space.Config.ManualSelections, p)
-				}
+				toggleSelection(space, node.FullPath)
 			}
 
 		case "enter", "right", "l":
@@ -303,6 +317,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					node.Expanded = false
 					state.rebuildVisibleList()
 				} else if node.Parent != nil {
+					// Jump to parent
 					for i, n := range state.VisibleNodes {
 						if n == node.Parent {
 							state.CursorIndex = i
@@ -363,10 +378,11 @@ func (ts *TabState) rebuildVisibleList() {
 func (m AppModel) View() string {
 	space := m.Session.GetActiveSpace()
 	if space == nil {
-		return "No workspace open. Run with --root ."
+		return "No workspace open."
 	}
 	state := m.TabStates[space.ID]
 
+	// 1. Tabs
 	var tabs []string
 	for _, s := range m.Session.Spaces {
 		name := filepath.Base(s.RootPath)
@@ -376,30 +392,27 @@ func (m AppModel) View() string {
 		}
 		tabs = append(tabs, style.Render(name))
 	}
-	tabs = append(tabs, styleTab.Render(" [Tab] Next Space "))
-	tabs = append(tabs, styleTab.Render(" [Ctrl+S] Save "))
+	tabs = append(tabs, styleTab.Render(" [Tab] Next "))
 	tabRow := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 
+	// 2. Sidebar
 	settings := lipgloss.JoinVertical(lipgloss.Left,
-		lipgloss.NewStyle().Bold(true).Render("Directory Settings"),
+		lipgloss.NewStyle().Bold(true).Render("Settings"),
 		"",
-		"Root (r):",
-		state.InputRoot.View(),
-		"",
-		"Output (o):",
-		state.InputOutput.View(),
-		"",
-		lipgloss.NewStyle().Bold(true).Render("Extraction Options"),
-		"",
+		"Root (r):", state.InputRoot.View(), "",
+		"Output (o):", state.InputOutput.View(), "",
+		"Include (f):", state.InputInclude.View(), "",
+		"Exclude (g):", state.InputExclude.View(), "",
+		lipgloss.NewStyle().Bold(true).Render("Options"),
 		checkbox("Include Mode (i)", space.Config.IncludeMode),
 		checkbox("Show Context (c)", space.Config.ShowContext),
 		checkbox("Show Excluded (x)", space.Config.ShowExcluded),
 		"",
-		lipgloss.NewStyle().Foreground(colorGray).Render("Stats:"),
-		fmt.Sprintf("%d Selections", len(space.Config.ManualSelections)),
+		lipgloss.NewStyle().Foreground(colorGray).Render(fmt.Sprintf("Selected: %d", len(space.Config.ManualSelections))),
 	)
 	sidebar := styleSidebar.Height(m.Height - 5).Render(settings)
 
+	// 3. File Tree
 	var treeRows []string
 	startRow := 0
 	if state.CursorIndex > (m.Height / 2) {
@@ -407,15 +420,14 @@ func (m AppModel) View() string {
 	}
 	endRow := startRow + (m.Height - 6)
 
-	// FIX: Modernized min usage
+	// Modern min usage
 	endRow = min(endRow, len(state.VisibleNodes))
 
 	for i := startRow; i < endRow; i++ {
 		node := state.VisibleNodes[i]
 
-		depth := strings.Count(node.FullPath, string(filepath.Separator)) - strings.Count(space.RootPath, string(filepath.Separator))
-		// FIX: Modernized max usage
-		depth = max(0, depth)
+		// Modern max usage for depth calculation
+		depth := max(0, strings.Count(node.FullPath, string(filepath.Separator))-strings.Count(space.RootPath, string(filepath.Separator)))
 		indent := strings.Repeat("  ", depth)
 
 		icon := "📄"
@@ -427,19 +439,45 @@ func (m AppModel) View() string {
 			}
 		}
 
+		// --- Visual Selection Logic ---
 		check := "[ ]"
-		for _, s := range space.Config.ManualSelections {
-			if s == node.FullPath {
-				check = "[x]"
-				break
+		style := lipgloss.NewStyle()
+
+		// 1. Check Exact Match (Priority 1)
+		// Modernized using slices.Contains
+		isExact := slices.Contains(space.Config.ManualSelections, node.FullPath)
+		if isExact {
+			check = "[x]"
+			style = style.Foreground(colorGreen)
+		}
+
+		// 2. Check Implicit/Ancestor Match (Priority 2)
+		if !isExact {
+			for _, s := range space.Config.ManualSelections {
+				if strings.HasPrefix(node.FullPath, s+string(filepath.Separator)) {
+					check = "[*]"
+					style = style.Foreground(colorGreen)
+					break
+				}
 			}
-			if strings.HasPrefix(node.FullPath, s+string(filepath.Separator)) {
-				check = "[*]"
-				break
+		}
+
+		// 3. Check Partial/Descendant Match (Priority 3)
+		if check == "[ ]" && node.IsDir {
+			// If we contain a selected item, show [-]
+			// We iterate selections and check if any start with our path
+			prefix := node.FullPath + string(filepath.Separator)
+			for _, s := range space.Config.ManualSelections {
+				if strings.HasPrefix(s, prefix) {
+					check = "[-]"
+					style = style.Foreground(colorYellow)
+					break
+				}
 			}
 		}
 
 		line := fmt.Sprintf("%s%s %s %s", indent, check, icon, node.Name)
+		line = style.Render(line)
 
 		if i == state.CursorIndex {
 			line = styleSelected.Render("> " + line)
@@ -447,10 +485,6 @@ func (m AppModel) View() string {
 			line = "  " + line
 		}
 		treeRows = append(treeRows, line)
-	}
-
-	if len(state.VisibleNodes) == 0 {
-		treeRows = append(treeRows, "  (Empty or Loading...)")
 	}
 
 	mainContent := lipgloss.JoinVertical(lipgloss.Left, treeRows...)
@@ -467,6 +501,62 @@ func (m AppModel) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, tabRow, body, footer)
 }
 
+// --- Actions ---
+
+func toggleSelection(space *core.DirectorySpace, path string) {
+	// Simple toggle logic: If in list, remove. Else add.
+	// The view logic handles the visual priority.
+	found := false
+	for i, existing := range space.Config.ManualSelections {
+		if existing == path {
+			space.Config.ManualSelections = append(space.Config.ManualSelections[:i], space.Config.ManualSelections[i+1:]...)
+			found = true
+			break
+		}
+	}
+	if !found {
+		space.Config.ManualSelections = append(space.Config.ManualSelections, path)
+	}
+}
+
+func focusInput(state *TabState, idx int) {
+	state.ActiveInput = idx
+	blurAll(state)
+	switch idx {
+	case 1:
+		state.InputRoot.Focus()
+	case 2:
+		state.InputOutput.Focus()
+	case 3:
+		state.InputInclude.Focus()
+	case 4:
+		state.InputExclude.Focus()
+	}
+}
+
+func blurAll(state *TabState) {
+	state.InputRoot.Blur()
+	state.InputOutput.Blur()
+	state.InputInclude.Blur()
+	state.InputExclude.Blur()
+}
+
+func splitClean(s string) []string {
+	if s == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, ",")
+	var res []string
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t != "" {
+			res = append(res, t)
+		}
+	}
+	return res
+}
+
+// ... (Helper functions populateChildren, checkbox, loadDirectoryCmd, runExportCmd remain same)
 func checkbox(label string, checked bool) string {
 	if checked {
 		return fmt.Sprintf("[x] %s", label)
@@ -476,7 +566,6 @@ func checkbox(label string, checked bool) string {
 
 func (m *AppModel) populateChildren(state *TabState, parentPath string, entries []core.DirEntry) {
 	var targetNode *TreeNode
-
 	var find func(*TreeNode) *TreeNode
 	find = func(n *TreeNode) *TreeNode {
 		if n.FullPath == parentPath {
@@ -489,11 +578,9 @@ func (m *AppModel) populateChildren(state *TabState, parentPath string, entries 
 		}
 		return nil
 	}
-
 	if state.TreeRoot != nil {
 		targetNode = find(state.TreeRoot)
 	}
-
 	if targetNode == nil {
 		return
 	}
