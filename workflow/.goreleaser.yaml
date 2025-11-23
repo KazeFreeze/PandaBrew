@@ -1,0 +1,160 @@
+version: 2
+
+# Project metadata
+project_name: PandaBrew
+
+# Run before building
+before:
+  hooks:
+    - go mod tidy
+    - go mod verify
+    - go test -v ./...
+
+# Build configuration
+builds:
+  - id: PandaBrew
+    binary: PandaBrew
+    main: ./cmd/PandaBrew
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - "-s -w"
+      - "-X main.version={{.Version}}"
+      - "-X main.commit={{.Commit}}"
+      - "-X main.date={{.Date}}"
+      - "-X main.builtBy=goreleaser"
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - 386
+    goarm:
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: 386
+      - goos: windows
+        goarch: arm64
+
+# Archive configuration
+archives:
+  - id: PandaBrew-archive
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+      - docs/*
+
+# Checksum configuration
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# Changelog configuration (uses conventional commits)
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^style:"
+      - "merge conflict"
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+  groups:
+    - title: "New Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "Performance Improvements"
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "Refactors"
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: "Documentation Updates"
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 4
+    - title: "Other Changes"
+      order: 999
+
+# GitHub Release configuration
+release:
+  github:
+    owner: KazeFreeze
+    name: PandaBrew
+  draft: false
+  prerelease: auto
+  mode: append
+  header: |
+    ## PandaBrew {{ .Tag }}
+
+    🐼☕ Project file extraction made delightful!
+
+    ### Installation
+
+    #### Linux/macOS
+    ```bash
+    # Download and extract
+    tar -xzf PandaBrew_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz
+
+    # Move to PATH
+    sudo mv PandaBrew /usr/local/bin/
+
+    # Make executable (if needed)
+    sudo chmod +x /usr/local/bin/PandaBrew
+    ```
+
+    #### Windows
+    Extract the ZIP file and add the directory to your PATH.
+
+  footer: |
+    ---
+
+    **Full Changelog**: https://github.com/KazeFreeze/PandaBrew/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+    ### What's Changed
+
+# Snapshot configuration (for testing)
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+# AUR package (for Arch/CachyOS users)
+nfpms:
+  - id: PandaBrew-aur
+    package_name: PandaBrew
+    homepage: https://github.com/KazeFreeze/PandaBrew
+    description: |
+      A TUI tool for selective file extraction and project documentation.
+      Supports conventional commits and exports project structures with smart filtering.
+    maintainer: Bernard Tapiru, Jr. <tapirua@gmail.com>
+    license: MIT
+    vendor: Bernard Tapiru, Jr.
+    formats:
+      - archlinux
+    bindir: /usr/bin
+    contents:
+      - src: README.md
+        dst: /usr/share/doc/PandaBrew/README.md
+      - src: LICENSE
+        dst: /usr/share/licenses/PandaBrew/LICENSE
