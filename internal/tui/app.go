@@ -9,8 +9,6 @@ import (
 
 	"pandabrew/internal/core"
 
-	// Required for slices.Contains
-
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -53,6 +51,7 @@ var (
 
 // --- Model ---
 
+// AppModel is the single source of truth for the UI state.
 type AppModel struct {
 	Session       *core.Session
 	TabStates     map[string]*TabState
@@ -62,6 +61,7 @@ type AppModel struct {
 	Width, Height int
 }
 
+// TabState holds the UI state for a specific directory space (tab).
 type TabState struct {
 	TreeRoot     *TreeNode
 	VisibleNodes []*TreeNode
@@ -76,6 +76,7 @@ type TabState struct {
 	ActiveInput int // 0=None, 1=Root, 2=Output, 3=Include, 4=Exclude
 }
 
+// TreeNode represents the VISUAL state of a file.
 type TreeNode struct {
 	Name     string
 	FullPath string
@@ -87,6 +88,7 @@ type TreeNode struct {
 
 // --- Init ---
 
+// InitialModel creates the starting state of the TUI.
 func InitialModel(session *core.Session) AppModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
@@ -135,6 +137,7 @@ func newTabState(space *core.DirectorySpace) *TabState {
 	return ts
 }
 
+// Init handles the initial command to run when the app starts.
 func (m AppModel) Init() tea.Cmd {
 	activeSpace := m.Session.GetActiveSpace()
 	if activeSpace != nil {
@@ -145,6 +148,7 @@ func (m AppModel) Init() tea.Cmd {
 
 // --- Update ---
 
+// Update handles incoming messages and updates the model.
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
@@ -223,7 +227,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.StatusMessage = "Failed: " + msg.Err.Error()
 		} else {
-			m.StatusMessage = fmt.Sprintf("Saved %d files to %s", msg.Count, space.OutputFilePath)
+			m.StatusMessage = fmt.Sprintf("Exported %d files (~%d tokens) to %s",
+				msg.Count, msg.Tokens, filepath.Base(space.OutputFilePath))
 		}
 
 	case tea.KeyMsg:
@@ -375,6 +380,7 @@ func (ts *TabState) rebuildVisibleList() {
 	}
 }
 
+// View renders the UI.
 func (m AppModel) View() string {
 	space := m.Session.GetActiveSpace()
 	if space == nil {
@@ -419,14 +425,11 @@ func (m AppModel) View() string {
 		startRow = state.CursorIndex - (m.Height / 2)
 	}
 	endRow := startRow + (m.Height - 6)
-
-	// Modern min usage
 	endRow = min(endRow, len(state.VisibleNodes))
 
 	for i := startRow; i < endRow; i++ {
 		node := state.VisibleNodes[i]
 
-		// Modern max usage for depth calculation
 		depth := max(0, strings.Count(node.FullPath, string(filepath.Separator))-strings.Count(space.RootPath, string(filepath.Separator)))
 		indent := strings.Repeat("  ", depth)
 
@@ -444,7 +447,6 @@ func (m AppModel) View() string {
 		style := lipgloss.NewStyle()
 
 		// 1. Check Exact Match (Priority 1)
-		// Modernized using slices.Contains
 		isExact := slices.Contains(space.Config.ManualSelections, node.FullPath)
 		if isExact {
 			check = "[x]"
@@ -464,8 +466,6 @@ func (m AppModel) View() string {
 
 		// 3. Check Partial/Descendant Match (Priority 3)
 		if check == "[ ]" && node.IsDir {
-			// If we contain a selected item, show [-]
-			// We iterate selections and check if any start with our path
 			prefix := node.FullPath + string(filepath.Separator)
 			for _, s := range space.Config.ManualSelections {
 				if strings.HasPrefix(s, prefix) {
@@ -504,8 +504,6 @@ func (m AppModel) View() string {
 // --- Actions ---
 
 func toggleSelection(space *core.DirectorySpace, path string) {
-	// Simple toggle logic: If in list, remove. Else add.
-	// The view logic handles the visual priority.
 	found := false
 	for i, existing := range space.Config.ManualSelections {
 		if existing == path {
@@ -556,7 +554,6 @@ func splitClean(s string) []string {
 	return res
 }
 
-// ... (Helper functions populateChildren, checkbox, loadDirectoryCmd, runExportCmd remain same)
 func checkbox(label string, checked bool) string {
 	if checked {
 		return fmt.Sprintf("[x] %s", label)
@@ -594,6 +591,7 @@ func (m *AppModel) populateChildren(state *TabState, parentPath string, entries 
 	targetNode.Children = children
 }
 
+// DirLoadedMsg carries the result of a directory listing operation.
 type DirLoadedMsg struct {
 	Path    string
 	Entries []core.DirEntry
@@ -607,14 +605,20 @@ func loadDirectoryCmd(path string) tea.Cmd {
 	}
 }
 
+// ExportCompleteMsg carries the result of an extraction operation, including file count and token estimate.
 type ExportCompleteMsg struct {
-	Count int
-	Err   error
+	Count  int
+	Tokens int
+	Err    error
 }
 
 func runExportCmd(space *core.DirectorySpace) tea.Cmd {
 	return func() tea.Msg {
 		meta, err := core.RunExtraction(space)
-		return ExportCompleteMsg{Count: meta.TotalFiles, Err: err}
+		return ExportCompleteMsg{
+			Count:  meta.TotalFiles,
+			Tokens: meta.TotalTokens,
+			Err:    err,
+		}
 	}
 }

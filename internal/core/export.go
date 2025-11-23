@@ -32,45 +32,64 @@ func RunExtraction(space *DirectorySpace) (meta ReportMetadata, err error) {
 	if err != nil {
 		return meta, fmt.Errorf("failed to create output file: %w", err)
 	}
+
+	// We wrap the file writer to count bytes automatically
+	countingWriter := &TokenCountingWriter{Writer: outFile}
+
 	defer func() {
 		if closeErr := outFile.Close(); closeErr != nil && err == nil {
 			err = closeErr
 		}
 	}()
 
-	if err := writeHeader(outFile, meta); err != nil {
+	if err := writeHeader(countingWriter, meta); err != nil {
 		return meta, err
 	}
 
 	absOutPath, _ := filepath.Abs(space.OutputFilePath)
 
-	if _, err := fmt.Fprintln(outFile, "### Project Structure"); err != nil {
+	if _, err := fmt.Fprintln(countingWriter, "### Project Structure"); err != nil {
 		return meta, err
 	}
-	if _, err := fmt.Fprintln(outFile); err != nil {
+	if _, err := fmt.Fprintln(countingWriter); err != nil {
 		return meta, err
 	}
 
-	if err := walkAndProcess(space.RootPath, config, outFile, true, &meta, absOutPath); err != nil {
+	if err := walkAndProcess(space.RootPath, config, countingWriter, true, &meta, absOutPath); err != nil {
 		return meta, err
 	}
-	if _, err := fmt.Fprintln(outFile); err != nil {
+	if _, err := fmt.Fprintln(countingWriter); err != nil {
 		return meta, err
 	}
 
 	if !config.FilenamesOnly {
-		if _, err := fmt.Fprintln(outFile, "### File Contents"); err != nil {
+		if _, err := fmt.Fprintln(countingWriter, "### File Contents"); err != nil {
 			return meta, err
 		}
-		if _, err := fmt.Fprintln(outFile); err != nil {
+		if _, err := fmt.Fprintln(countingWriter); err != nil {
 			return meta, err
 		}
-		if err := walkAndProcess(space.RootPath, config, outFile, false, &meta, absOutPath); err != nil {
+		if err := walkAndProcess(space.RootPath, config, countingWriter, false, &meta, absOutPath); err != nil {
 			return meta, err
 		}
 	}
 
+	// Finalize token count from our tracking writer
+	meta.TotalTokens = countingWriter.EstimatedTokens
 	return meta, nil
+}
+
+// TokenCountingWriter is a wrapper that estimates tokens (chars / 4)
+type TokenCountingWriter struct {
+	Writer          io.Writer
+	EstimatedTokens int
+}
+
+func (w *TokenCountingWriter) Write(p []byte) (n int, err error) {
+	n, err = w.Writer.Write(p)
+	// Standard heuristic: ~4 characters per token
+	w.EstimatedTokens += n / 4
+	return n, err
 }
 
 func walkAndProcess(root string, cfg ExtractionConfig, w io.Writer, structOnly bool, meta *ReportMetadata, absOutPath string) error {
@@ -104,10 +123,8 @@ func walkAndProcess(root string, cfg ExtractionConfig, w io.Writer, structOnly b
 			return nil
 		}
 
-		// 1. Is the file itself selected?
+		// Selection Logic
 		isSelected := isPathSelected(path, root, selectionMap)
-
-		// 2. Decide to Keep vs Skip
 		shouldKeep := false
 		if cfg.IncludeMode {
 			shouldKeep = isSelected
@@ -115,7 +132,6 @@ func walkAndProcess(root string, cfg ExtractionConfig, w io.Writer, structOnly b
 			shouldKeep = !isSelected
 		}
 
-		// 3. Context Awareness (Siblings)
 		isContext := false
 		if !shouldKeep && cfg.ShowContext {
 			parent := filepath.Dir(path)
@@ -124,14 +140,12 @@ func walkAndProcess(root string, cfg ExtractionConfig, w io.Writer, structOnly b
 			}
 		}
 
-		// 4. Skip Logic
 		if !shouldKeep && !isContext {
 			if cfg.IncludeMode && d.IsDir() {
 				if !isRelevantDirectory(path, root, selectionMap) {
 					return filepath.SkipDir
 				}
 			}
-
 			if structOnly && cfg.ShowExcluded {
 				if err := printTreeNode(w, relPath, d.IsDir(), false); err != nil {
 					return err
@@ -140,7 +154,6 @@ func walkAndProcess(root string, cfg ExtractionConfig, w io.Writer, structOnly b
 			return nil
 		}
 
-		// 5. Output
 		if isContext {
 			if structOnly {
 				if err := printTreeNode(w, relPath, d.IsDir(), false); err != nil {
@@ -167,6 +180,7 @@ func walkAndProcess(root string, cfg ExtractionConfig, w io.Writer, structOnly b
 	})
 }
 
+// Helper functions (Reuse previous implementations)
 func isRelevantDirectory(currentPath, root string, selections map[string]bool) bool {
 	if isPathSelected(currentPath, root, selections) {
 		return true
