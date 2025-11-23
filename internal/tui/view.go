@@ -183,29 +183,49 @@ func (m AppModel) renderFooter(space *core.DirectorySpace) string {
 }
 
 func (m AppModel) renderHelpView() string {
-	// The key change: pass the keymap to the help View method
-	helpView := m.Help.FullHelpView(m.keys.FullHelp())
+	// Define columns manually for perfect alignment
+	groups := m.keys.FullHelp()
 
-	title := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(colorPurple).
-		Render(iconHelp + " Keyboard Shortcuts")
+	var rows []string
+	for _, group := range groups {
+		var rowItems []string
+		for _, binding := range group {
+			// Render Key (Fixed Width 12 chars)
+			keyText := binding.Help().Key
+			keyStyled := lipgloss.NewStyle().
+				Foreground(colorPurple).
+				Bold(true).
+				Width(12). // Fixed width aligns columns
+				Render(keyText)
 
-	description := lipgloss.NewStyle().
-		Foreground(colorGrayLight).
-		Render("Navigation & Selection")
+			// Render Description
+			descText := binding.Help().Desc
+			descStyled := lipgloss.NewStyle().
+				Foreground(colorLight).
+				Render(descText)
+
+			// Combine
+			item := fmt.Sprintf("%s %s", keyStyled, descStyled)
+			rowItems = append(rowItems, item)
+		}
+		// Join items in this row with padding
+		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, rowItems...))
+		// Add a blank line between groups if desired, or just list them
+	}
+
+	// Join all rows vertically
+	helpBlock := lipgloss.JoinVertical(lipgloss.Left, rows...)
+
+	// Wrapper Box
+	title := lipgloss.NewStyle().Bold(true).Foreground(colorPurple).Render(iconHelp + " Keyboard Shortcuts")
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPurple).
 		Padding(1, 2).
-		Width(min(m.Width-4, 100)).
-		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", description, "", helpView))
+		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", helpBlock))
 
-	closeHint := lipgloss.NewStyle().
-		Foreground(colorGrayLight).
-		Italic(true).
-		Render("Press ? to close")
+	closeHint := lipgloss.NewStyle().Foreground(colorGrayLight).Italic(true).Render("Press ? to close")
 
 	return lipgloss.Place(
 		m.Width, m.Height,

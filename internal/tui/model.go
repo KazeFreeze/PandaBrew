@@ -81,12 +81,23 @@ func InitialModel(session *core.Session) AppModel {
 	newTabInput.CharLimit = 200
 	newTabInput.Width = 60
 
+	h := help.New()
+
+	// Style for the Keys (e.g., "q", "ctrl+c") -> Purple & Bold
+	h.Styles.FullKey = lipgloss.NewStyle().Foreground(colorPurple).Bold(true)
+	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(colorPurple).Bold(true)
+
+	// Style for the Descriptions (e.g., "quit app") -> White/Plain
+	h.Styles.FullDesc = lipgloss.NewStyle().Foreground(colorLight)
+	h.Styles.ShortDesc = lipgloss.NewStyle().Foreground(colorLight)
+	// -------------------------------------
+
 	model := AppModel{
 		Session:     session,
 		TabStates:   make(map[string]*TabState),
 		Spinner:     s,
 		Progress:    prog,
-		Help:        help.New(),
+		Help:        h,
 		NewTabInput: newTabInput,
 		keys:        keys,
 	}
