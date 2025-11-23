@@ -106,6 +106,43 @@ func (sm *SessionManager) AddSpaceFromPath(s *Session, rawPath string) (*Directo
 	return newSpace, nil
 }
 
+// RemoveSpace removes a space by ID and adjusts the active space if needed.
+func (sm *SessionManager) RemoveSpace(s *Session, spaceID string) error {
+	// Don't allow removal of the last space
+	if len(s.Spaces) <= 1 {
+		return fmt.Errorf("cannot close the last tab")
+	}
+
+	// Find and remove the space
+	idx := -1
+	for i, space := range s.Spaces {
+		if space.ID == spaceID {
+			idx = i
+			break
+		}
+	}
+
+	if idx == -1 {
+		return fmt.Errorf("space not found")
+	}
+
+	// Remove the space
+	s.Spaces = append(s.Spaces[:idx], s.Spaces[idx+1:]...)
+
+	// If we deleted the active space, switch to another one
+	if s.ActiveSpaceID == spaceID {
+		if idx > 0 {
+			// Switch to the previous tab
+			s.ActiveSpaceID = s.Spaces[idx-1].ID
+		} else {
+			// Switch to the first tab
+			s.ActiveSpaceID = s.Spaces[0].ID
+		}
+	}
+
+	return nil
+}
+
 // ValidateSpace checks if the RootPath and Selections still exist.
 func (sm *SessionManager) ValidateSpace(space *DirectorySpace) []string {
 	var warnings []string

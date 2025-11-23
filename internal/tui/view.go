@@ -58,7 +58,7 @@ func (m AppModel) renderTabs() string {
 		}
 		tabs = append(tabs, style.Render(name))
 	}
-	tabs = append(tabs, styleTab.Render(iconKeyboard+" [Tab] Switch • [Ctrl+N] New"))
+	tabs = append(tabs, styleTab.Render(iconKeyboard+" [Tab] Switch • [Ctrl+N] New • [Ctrl+W] Close"))
 	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 }
 
@@ -189,31 +189,28 @@ func (m AppModel) renderHelpView() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(colorPurple).
-		Padding(1, 0).
 		Render(iconHelp + " Keyboard Shortcuts")
 
 	description := lipgloss.NewStyle().
-		Foreground(colorGray).
-		Padding(0, 0, 1, 0).
+		Foreground(colorGrayLight).
 		Render("Navigation & Selection")
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPurple).
-		Padding(2, 3).
+		Padding(1, 2).
 		Width(min(m.Width-4, 100)).
-		Render(lipgloss.JoinVertical(lipgloss.Left, title, description, helpView))
+		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", description, "", helpView))
 
 	closeHint := lipgloss.NewStyle().
-		Foreground(colorGray).
+		Foreground(colorGrayLight).
 		Italic(true).
-		MarginTop(1).
 		Render("Press ? to close")
 
 	return lipgloss.Place(
 		m.Width, m.Height,
 		lipgloss.Center, lipgloss.Center,
-		lipgloss.JoinVertical(lipgloss.Center, box, closeHint),
+		lipgloss.JoinVertical(lipgloss.Center, box, "", closeHint),
 	)
 }
 
@@ -221,30 +218,28 @@ func (m AppModel) renderNewTabView() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(colorPurple).
-		Padding(1, 0).
 		Render(iconFolder + " Open New Tab")
 
 	description := lipgloss.NewStyle().
-		Foreground(colorGray).
-		Padding(0, 0, 1, 0).
+		Foreground(colorGrayLight).
 		Render("Enter the full path to a directory:")
 
 	inputBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPurple).
-		Padding(1, 2).
+		Padding(0, 1).
 		Width(min(m.Width-10, 70)).
 		Render(m.NewTabInput.View())
 
 	hints := lipgloss.NewStyle().
-		Foreground(colorGray).
+		Foreground(colorGrayLight).
 		Italic(true).
-		MarginTop(1).
 		Render("Enter to confirm • Esc to cancel")
 
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
 		title,
+		"",
 		description,
 		"",
 		inputBox,
@@ -255,7 +250,7 @@ func (m AppModel) renderNewTabView() string {
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPurple).
-		Padding(2, 3).
+		Padding(1, 2).
 		Render(content)
 
 	return lipgloss.Place(

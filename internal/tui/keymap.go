@@ -4,24 +4,25 @@ import "github.com/charmbracelet/bubbles/key"
 
 // --- Key Bindings ---
 type keyMap struct {
-	Up      key.Binding
-	Down    key.Binding
-	Left    key.Binding
-	Right   key.Binding
-	Select  key.Binding
-	Quit    key.Binding
-	Save    key.Binding
-	Export  key.Binding
-	Help    key.Binding
-	Tab     key.Binding
-	NewTab  key.Binding
-	Root    key.Binding
-	Output  key.Binding
-	Include key.Binding
-	Exclude key.Binding
-	ToggleI key.Binding
-	ToggleC key.Binding
-	ToggleX key.Binding
+	Up       key.Binding
+	Down     key.Binding
+	Left     key.Binding
+	Right    key.Binding
+	Select   key.Binding
+	Quit     key.Binding
+	Save     key.Binding
+	Export   key.Binding
+	Help     key.Binding
+	Tab      key.Binding
+	NewTab   key.Binding
+	CloseTab key.Binding
+	Root     key.Binding
+	Output   key.Binding
+	Include  key.Binding
+	Exclude  key.Binding
+	ToggleI  key.Binding
+	ToggleC  key.Binding
+	ToggleX  key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -31,9 +32,10 @@ func (k keyMap) ShortHelp() []key.Binding {
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Left, k.Right},
-		{k.Select, k.Tab, k.NewTab, k.Save},
-		{k.Export, k.Root, k.Output, k.Include},
-		{k.Exclude, k.ToggleI, k.ToggleC, k.ToggleX},
+		{k.Select, k.Tab, k.NewTab, k.CloseTab},
+		{k.Save, k.Export, k.Root, k.Output},
+		{k.Include, k.Exclude, k.ToggleI, k.ToggleC},
+		{k.ToggleX, k.Help, k.Quit},
 	}
 }
 
@@ -81,6 +83,10 @@ var keys = keyMap{
 	NewTab: key.NewBinding(
 		key.WithKeys("ctrl+n"),
 		key.WithHelp("ctrl+n", "new tab"),
+	),
+	CloseTab: key.NewBinding(
+		key.WithKeys("ctrl+w"),
+		key.WithHelp("ctrl+w", "close tab"),
 	),
 	Root: key.NewBinding(
 		key.WithKeys("r"),

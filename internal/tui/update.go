@@ -173,6 +173,29 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.NewTabInput.Focus()
 			return m, textinput.Blink
 
+		case key.Matches(msg, m.keys.CloseTab):
+			if space != nil && len(m.Session.Spaces) > 1 {
+				sm := core.NewSessionManager("")
+				if err := sm.RemoveSpace(m.Session, space.ID); err != nil {
+					m.StatusMessage = "Error: " + err.Error()
+				} else {
+					// Remove the tab state
+					delete(m.TabStates, space.ID)
+					m.StatusMessage = fmt.Sprintf("✓ Closed tab: %s", filepath.Base(space.RootPath))
+
+					// Load the new active space if needed
+					newSpace := m.Session.GetActiveSpace()
+					if newSpace != nil {
+						newState := m.TabStates[newSpace.ID]
+						if newState != nil && len(newState.TreeRoot.Children) == 0 {
+							cmds = append(cmds, loadDirectoryCmd(newSpace.RootPath))
+						}
+					}
+				}
+			} else {
+				m.StatusMessage = "Cannot close the last tab"
+			}
+
 		case key.Matches(msg, m.keys.Tab):
 			if len(m.Session.Spaces) > 1 {
 				currIdx := 0
