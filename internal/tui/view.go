@@ -27,21 +27,19 @@ func (m AppModel) View() string {
 	// 1. Tabs
 	tabs := m.renderTabs()
 
-	// 2. Breadcrumbs
-	breadcrumbs := m.renderBreadcrumbs(space.RootPath)
-
-	// 3. Sidebar
+	// 2. Sidebar
 	sidebar := m.renderSidebar(state, space)
 
-	// 4. File Tree
+	// 3. File Tree
 	tree := m.renderTree(state, space)
 
-	// 5. Footer
+	// 4. Footer
 	footer := m.renderFooter(space)
 
 	// Combine
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, tree)
-	main := lipgloss.JoinVertical(lipgloss.Left, tabs, breadcrumbs, body, footer)
+	// Removed breadcrumbs to return Tabs to prominence and hide the full path
+	main := lipgloss.JoinVertical(lipgloss.Left, tabs, body, footer)
 
 	return main
 }
@@ -49,6 +47,7 @@ func (m AppModel) View() string {
 func (m AppModel) renderTabs() string {
 	var tabs []string
 	for _, s := range m.Session.Spaces {
+		// Just the folder name, not the path
 		name := iconFolder + " " + filepath.Base(s.RootPath)
 		style := styleTab
 		if s.ID == m.Session.ActiveSpaceID {
@@ -58,27 +57,6 @@ func (m AppModel) renderTabs() string {
 	}
 	tabs = append(tabs, styleTab.Render(iconKeyboard+" [Tab] Switch"))
 	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-}
-
-func (m AppModel) renderBreadcrumbs(path string) string {
-	parts := strings.Split(path, string(filepath.Separator))
-	var styled []string
-
-	for i, part := range parts {
-		if part == "" {
-			continue
-		}
-		if i == len(parts)-1 {
-			styled = append(styled, styleBreadcrumbLast.Render(part))
-		} else {
-			styled = append(styled, styleBreadcrumb.Render(part))
-		}
-	}
-
-	sep := styleBreadcrumbSep.Render(" › ")
-	return lipgloss.NewStyle().
-		Padding(0, 2).
-		Render(iconTree + " " + strings.Join(styled, sep))
 }
 
 func (m AppModel) renderSidebar(state *TabState, space *core.DirectorySpace) string {
@@ -110,18 +88,23 @@ func (m AppModel) renderSidebar(state *TabState, space *core.DirectorySpace) str
 }
 
 func (m AppModel) renderInput(label string, input textinput.Model, focused bool, hotkey string) string {
-	labelWithKey := fmt.Sprintf("%s (%s)", label, hotkey)
+	labelWithKey := fmt.Sprintf("%s (%s):", label, hotkey)
 	labelStyle := styleInputLabel.Render(labelWithKey)
 
-	inputStyle := styleInputBox
+	// Simplified rendering: No border wrapper, just the input view.
+	// We apply the 'focused' style directly to the input view string if needed,
+	// or rely on the bubble's internal styling (which we set in styles.go).
+	inputView := input.View()
 	if focused {
-		inputStyle = styleInputBoxFocused
+		inputView = styleInputBoxFocused.Render(inputView)
+	} else {
+		inputView = styleInputBox.Render(inputView)
 	}
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		labelStyle,
-		inputStyle.Render(input.View()),
+		inputView,
 	)
 }
 

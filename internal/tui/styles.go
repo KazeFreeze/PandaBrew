@@ -38,7 +38,6 @@ const (
 	iconHelp     = "\uf059" // nf-fa-question_circle
 	iconGear     = "\uf013" // nf-fa-cog
 	iconFilter   = "\uf0b0" // nf-fa-filter
-	iconTree     = "\uf115" // nf-fa-folder_open (alternate tree icon)
 
 	// Tree drawing characters
 	treeSpace = "  "
@@ -87,17 +86,14 @@ var (
 	styleInputLabel = lipgloss.NewStyle().
 			Foreground(colorBlue).
 			Bold(true).
-			Width(10)
+			Width(34) // Adjusted to sidebar width
 
-	styleInputBox = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorGray).
-			Padding(0, 1)
+	// Slim Input Box (No Border)
+	styleInputBox = lipgloss.NewStyle()
 
+	// Slim Focused Input Box (Text Color Change only)
 	styleInputBoxFocused = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(colorPurple).
-				Padding(0, 1)
+				Foreground(colorPurple)
 
 	// Main Content Styles
 	styleMain = lipgloss.NewStyle().
@@ -124,16 +120,4 @@ var (
 				Foreground(colorGrayLight).
 				Background(colorGrayDark).
 				Padding(0, 2)
-
-	// Breadcrumb Style
-	styleBreadcrumb = lipgloss.NewStyle().
-			Foreground(colorGray).
-			MarginBottom(1)
-
-	styleBreadcrumbLast = lipgloss.NewStyle().
-				Foreground(colorPurple).
-				Bold(true)
-
-	styleBreadcrumbSep = lipgloss.NewStyle().
-				Foreground(colorGray)
 )
