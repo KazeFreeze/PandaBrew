@@ -7,6 +7,7 @@ import (
 
 	"pandabrew/internal/core"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -183,34 +184,56 @@ func (m AppModel) renderFooter(space *core.DirectorySpace) string {
 }
 
 func (m AppModel) renderHelpView() string {
-	// Define columns manually for perfect alignment
 	groups := m.keys.FullHelp()
 
-	var rows []string
+	// Calculate how many columns we can fit
+	const itemWidth = 38 // Width per help item
+
+	// Determine columns based on terminal width
+	maxCols := max(1, (m.Width-10)/itemWidth) // -10 for borders and padding
+
+	// Flatten all bindings from all groups into a single list
+	var allBindings []key.Binding
 	for _, group := range groups {
-		var rowItems []string
-		for _, binding := range group {
-			// Render Key (Fixed Width 12 chars)
-			keyText := binding.Help().Key
-			keyStyled := lipgloss.NewStyle().
-				Foreground(colorPurple).
-				Bold(true).
-				Width(12). // Fixed width aligns columns
-				Render(keyText)
+		allBindings = append(allBindings, group...)
+	}
 
-			// Render Description
-			descText := binding.Help().Desc
-			descStyled := lipgloss.NewStyle().
-				Foreground(colorLight).
-				Render(descText)
+	var rows []string
+	var rowItems []string
 
-			// Combine
-			item := fmt.Sprintf("%s %s", keyStyled, descStyled)
-			rowItems = append(rowItems, item)
+	for _, binding := range allBindings {
+		// Render Key (Fixed Width 14 chars)
+		keyText := binding.Help().Key
+		keyStyled := lipgloss.NewStyle().
+			Foreground(colorPurple).
+			Bold(true).
+			Width(14).
+			Render(keyText)
+
+		// Render Description (Fixed Width 22 chars to prevent overflow)
+		descText := binding.Help().Desc
+		descStyled := lipgloss.NewStyle().
+			Foreground(colorLight).
+			Width(22).
+			Render(descText)
+
+		// Combine key + desc with fixed total width
+		item := lipgloss.NewStyle().
+			Width(itemWidth).
+			Render(fmt.Sprintf("%s %s", keyStyled, descStyled))
+
+		rowItems = append(rowItems, item)
+
+		// If we've reached max columns, start a new row
+		if len(rowItems) >= maxCols {
+			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, rowItems...))
+			rowItems = nil
 		}
-		// Join items in this row with padding
+	}
+
+	// Add any remaining items
+	if len(rowItems) > 0 {
 		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, rowItems...))
-		// Add a blank line between groups if desired, or just list them
 	}
 
 	// Join all rows vertically
@@ -219,10 +242,14 @@ func (m AppModel) renderHelpView() string {
 	// Wrapper Box
 	title := lipgloss.NewStyle().Bold(true).Foreground(colorPurple).Render(iconHelp + " Keyboard Shortcuts")
 
+	// Constrain box width to terminal size
+	boxWidth := min(m.Width-4, maxCols*itemWidth+4) // +4 for padding
+
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPurple).
 		Padding(1, 2).
+		Width(boxWidth).
 		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", helpBlock))
 
 	closeHint := lipgloss.NewStyle().Foreground(colorGrayLight).Italic(true).Render("Press ? to close")
