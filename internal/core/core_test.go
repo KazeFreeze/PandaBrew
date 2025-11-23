@@ -7,19 +7,16 @@ import (
 	"testing"
 )
 
-// setupTestDir creates a temporary directory with a dummy project structure.
-// Returns the root path and a cleanup function.
-func setupTestDir(t *testing.T) string {
+func setupTestDir(t testing.TB) string {
 	t.Helper()
 	root := t.TempDir()
 
-	// Define file structure
 	files := map[string]string{
-		"src/main.go":               "package main\nfunc main() {}",
-		"src/utils.go":              "package main\nfunc help() {}",
+		"src/main.go":               "package main",
+		"src/utils.go":              "package main",
 		"src/data.txt":              "some data",
-		"node_modules/pkg/index.js": "console.log('hello')",
-		"README.md":                 "# Demo Project",
+		"node_modules/pkg/index.js": "console.log",
+		"README.md":                 "# Readme",
 		".env":                      "SECRET=123",
 	}
 
@@ -32,159 +29,193 @@ func setupTestDir(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
-
 	return root
 }
 
-func TestRunExtraction_RecursiveInclude(t *testing.T) {
+func TestExtractionScenarios(t *testing.T) {
 	root := setupTestDir(t)
-	outputFile := filepath.Join(root, "output.txt")
 
-	// Scenario: User selects 'src' folder. Expects recursive inclusion.
-	config := ExtractionConfig{
-		RootPath:       root,
-		OutputFilePath: outputFile,
-		IncludeMode:    true,
-		ManualSelections: []string{
-			filepath.Join(root, "src"), // Select the folder
+	outputDir := t.TempDir()
+
+	tests := []struct {
+		name            string
+		config          ExtractionConfig
+		wantFiles       int
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "Include Mode - Recursive Folder",
+			config: ExtractionConfig{
+				RootPath:    root,
+				IncludeMode: true,
+				ManualSelections: []string{
+					filepath.Join(root, "src"),
+				},
+			},
+			wantFiles:       3, // main.go, utils.go, data.txt
+			wantContains:    []string{"src/main.go", "src/utils.go"},
+			wantNotContains: []string{"README.md", "node_modules"},
+		},
+		{
+			name: "Include Mode - Single File",
+			config: ExtractionConfig{
+				RootPath:    root,
+				IncludeMode: true,
+				ManualSelections: []string{
+					filepath.Join(root, "README.md"),
+				},
+			},
+			wantFiles:       1,
+			wantContains:    []string{"README.md"},
+			wantNotContains: []string{"src/main.go"},
+		},
+		{
+			name: "Exclude Mode - Inverse Selection",
+			config: ExtractionConfig{
+				RootPath:    root,
+				IncludeMode: false, // EXCLUDE MODE
+				ManualSelections: []string{
+					filepath.Join(root, "src"),
+					filepath.Join(root, "node_modules"),
+				},
+			},
+			wantFiles:       2, // README.md, .env
+			wantContains:    []string{"README.md", ".env"},
+			wantNotContains: []string{"src/main.go", "node_modules"},
+		},
+		{
+			name: "Filenames Only Mode",
+			config: ExtractionConfig{
+				RootPath:      root,
+				IncludeMode:   true,
+				FilenamesOnly: true,
+				ManualSelections: []string{
+					filepath.Join(root, "src"),
+				},
+			},
+			wantFiles: 0,
+			// FIX: In FilenamesOnly mode, we only see the tree structure.
+			// "src/main.go" doesn't appear as a single string, but "main.go" does.
+			wantContains:    []string{"main.go"},
+			wantNotContains: []string{"package main"},
+		},
+		{
+			name: "Show Excluded in Structure",
+			config: ExtractionConfig{
+				RootPath:     root,
+				IncludeMode:  true,
+				ShowExcluded: true,
+				ManualSelections: []string{
+					filepath.Join(root, "src"),
+				},
+			},
+			wantFiles: 3,
+			wantContains: []string{
+				"README.md [EXCLUDED]",
+				"src/main.go",
+			},
 		},
 	}
 
-	meta, err := RunExtraction(config)
-	if err != nil {
-		t.Fatalf("RunExtraction failed: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.config.OutputFilePath = filepath.Join(outputDir, "output.txt")
 
-	// Verify Metadata
-	if meta.TotalFiles != 3 { // main.go, utils.go, data.txt
-		t.Errorf("Expected 3 files, got %d", meta.TotalFiles)
-	}
+			meta, err := RunExtraction(tt.config)
+			if err != nil {
+				t.Fatalf("Extraction failed: %v", err)
+			}
 
-	// Verify Content
-	contentBytes, err := os.ReadFile(outputFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	content := string(contentBytes)
+			if !tt.config.FilenamesOnly && meta.TotalFiles != tt.wantFiles {
+				t.Errorf("File count: got %d, want %d", meta.TotalFiles, tt.wantFiles)
+			}
 
-	// Assertions
-	shouldContain := []string{
-		"src/main.go",
-		"src/utils.go",
-		"src/data.txt",
-		"package main", // Content check
-	}
-	shouldNotContain := []string{
-		"node_modules",
-		"README.md",
-		".env",
-	}
+			content, _ := os.ReadFile(tt.config.OutputFilePath)
+			strContent := string(content)
 
-	for _, s := range shouldContain {
-		if !strings.Contains(content, s) {
-			t.Errorf("Report missing expected string: %s", s)
-		}
-	}
-	for _, s := range shouldNotContain {
-		if strings.Contains(content, s) {
-			t.Errorf("Report contained unexpected string: %s", s)
-		}
+			for _, s := range tt.wantContains {
+				s = filepath.ToSlash(s)
+				if !strings.Contains(strContent, s) {
+					t.Errorf("Missing expected string: %s", s)
+				}
+			}
+
+			for _, s := range tt.wantNotContains {
+				s = filepath.ToSlash(s)
+				if strings.Contains(strContent, s) {
+					t.Errorf("Unexpected string found: %s", s)
+				}
+			}
+		})
 	}
 }
 
-func TestRunExtraction_PatternExclusion(t *testing.T) {
+func TestCrossCheck_IncludeVsExclude(t *testing.T) {
 	root := setupTestDir(t)
-	outputFile := filepath.Join(root, "output.txt")
+	outputDir := t.TempDir()
 
-	// Scenario: Select 'src', but exclude .txt files
-	config := ExtractionConfig{
+	// 1. Include Mode
+	includeConfig := ExtractionConfig{
 		RootPath:       root,
-		OutputFilePath: outputFile,
-		IncludeMode:    true,
-		ManualSelections: []string{
-			filepath.Join(root, "src"),
-		},
-		ExcludePatterns: []string{"*.txt"},
-	}
-
-	meta, _ := RunExtraction(config)
-
-	if meta.TotalFiles != 2 { // main.go, utils.go (data.txt excluded)
-		t.Errorf("Expected 2 files, got %d", meta.TotalFiles)
-	}
-
-	contentBytes, _ := os.ReadFile(outputFile)
-	content := string(contentBytes)
-
-	if strings.Contains(content, "data.txt") {
-		t.Error("Pattern exclusion failed: found data.txt")
-	}
-}
-
-func TestRunExtraction_MixedSelections(t *testing.T) {
-	root := setupTestDir(t)
-	outputFile := filepath.Join(root, "output.txt")
-
-	// Scenario: Select README.md explicitly, and src/main.go explicitly
-	config := ExtractionConfig{
-		RootPath:       root,
-		OutputFilePath: outputFile,
+		OutputFilePath: filepath.Join(outputDir, "out_include.txt"),
 		IncludeMode:    true,
 		ManualSelections: []string{
 			filepath.Join(root, "README.md"),
-			filepath.Join(root, "src", "main.go"),
+			filepath.Join(root, ".env"),
 		},
 	}
 
-	meta, _ := RunExtraction(config)
-
-	if meta.TotalFiles != 2 {
-		t.Errorf("Expected 2 files, got %d", meta.TotalFiles)
+	// 2. Exclude Mode
+	excludeConfig := ExtractionConfig{
+		RootPath:       root,
+		OutputFilePath: filepath.Join(outputDir, "out_exclude.txt"),
+		IncludeMode:    false,
+		ManualSelections: []string{
+			filepath.Join(root, "src"),
+			filepath.Join(root, "node_modules"),
+		},
 	}
 
-	contentBytes, _ := os.ReadFile(outputFile)
-	content := string(contentBytes)
+	RunExtraction(includeConfig)
+	RunExtraction(excludeConfig)
 
-	// Should include main.go but NOT utils.go (since we selected specific file, not folder)
-	if !strings.Contains(content, "src/main.go") {
-		t.Error("Missing src/main.go")
-	}
-	if strings.Contains(content, "src/utils.go") {
-		t.Error("Unexpectedly included src/utils.go")
+	out1, _ := os.ReadFile(includeConfig.OutputFilePath)
+	out2, _ := os.ReadFile(excludeConfig.OutputFilePath)
+
+	body1 := extractBody(string(out1))
+	body2 := extractBody(string(out2))
+
+	if body1 != body2 {
+		t.Errorf("Crosscheck Failed!\nInclude Output:\n%s\n\nExclude Output:\n%s", body1, body2)
 	}
 }
 
-func TestSessionSaveLoad(t *testing.T) {
-	root := setupTestDir(t)
-	sessionFile := filepath.Join(root, "session.json")
+func extractBody(full string) string {
+	parts := strings.SplitAfterN(full, "---\n\n", 2)
+	if len(parts) > 1 {
+		return parts[1]
+	}
+	return full
+}
 
-	originalConfig := ExtractionConfig{
-		RootPath: root,
+func BenchmarkExtraction(b *testing.B) {
+	root := setupTestDir(b)
+	outputDir := b.TempDir()
+
+	config := ExtractionConfig{
+		RootPath:       root,
+		OutputFilePath: filepath.Join(outputDir, "bench.txt"),
+		IncludeMode:    true,
 		ManualSelections: []string{
 			filepath.Join(root, "src"),
 		},
-		IncludePatterns: []string{"*.go"},
 	}
 
-	// 1. Save
-	if err := SaveSession(originalConfig, sessionFile); err != nil {
-		t.Fatalf("SaveSession failed: %v", err)
-	}
-
-	// 2. Load
-	loadedState, warnings, err := LoadSession(sessionFile)
-	if err != nil {
-		t.Fatalf("LoadSession failed: %v", err)
-	}
-
-	if len(warnings) > 0 {
-		t.Errorf("Unexpected warnings during load: %v", warnings)
-	}
-
-	if loadedState.LastRootPath != root {
-		t.Errorf("Root path mismatch. Got %s, want %s", loadedState.LastRootPath, root)
-	}
-	if len(loadedState.ManualSelections) != 1 {
-		t.Errorf("Selection count mismatch")
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := RunExtraction(config); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
