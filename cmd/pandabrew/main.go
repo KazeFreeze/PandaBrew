@@ -16,25 +16,34 @@ import (
 func main() {
 	root := flag.String("root", ".", "Root directory to scan")
 	headless := flag.Bool("headless", false, "Run in headless mode without TUI")
-	output := flag.String("output", "output.txt", "Output file for headless mode")
+	output := flag.String("output", "", "Output file for headless mode")
 	flag.Parse()
 
-	absRoot, err := filepath.Abs(*root)
+	// 1. Initialize Session Manager
+	sm := core.NewSessionManager("")
+	session, err := sm.Load()
 	if err != nil {
-		fmt.Printf("Error resolving root path: %v\n", err)
+		// Reset on corruption
+		session = &core.Session{Spaces: []*core.DirectorySpace{}}
+	}
+
+	// 2. Handle "pandabrew ." argument to create/update space
+	absRoot, _ := filepath.Abs(*root)
+	space, err := sm.AddSpaceFromPath(session, absRoot)
+	if err != nil {
+		fmt.Printf("Error initializing workspace: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Headless Mode
+	// Override default output if flag provided
+	if *output != "" {
+		space.OutputFilePath = *output
+	}
+
+	// 3. Headless Mode
 	if *headless {
-		fmt.Printf("Starting headless extraction of %s...\n", absRoot)
-		config := core.ExtractionConfig{
-			RootPath:       absRoot,
-			OutputFilePath: *output,
-			IncludeMode:    true,
-			// Note: In real headless mode, you'd load selections from a JSON file arg
-		}
-		meta, err := core.RunExtraction(config)
+		fmt.Printf("Starting headless extraction of %s...\n", space.RootPath)
+		meta, err := core.RunExtraction(space)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
@@ -43,8 +52,8 @@ func main() {
 		return
 	}
 
-	// TUI Mode
-	p := tea.NewProgram(tui.InitialModel(absRoot))
+	// 4. TUI Mode
+	p := tea.NewProgram(tui.InitialModel(session), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v", err)
 		os.Exit(1)

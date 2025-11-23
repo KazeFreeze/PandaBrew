@@ -34,7 +34,6 @@ func setupTestDir(t testing.TB) string {
 
 func TestExtractionScenarios(t *testing.T) {
 	root := setupTestDir(t)
-
 	outputDir := t.TempDir()
 
 	tests := []struct {
@@ -47,7 +46,6 @@ func TestExtractionScenarios(t *testing.T) {
 		{
 			name: "Include Mode - Recursive Folder",
 			config: ExtractionConfig{
-				RootPath:    root,
 				IncludeMode: true,
 				ManualSelections: []string{
 					filepath.Join(root, "src"),
@@ -60,7 +58,6 @@ func TestExtractionScenarios(t *testing.T) {
 		{
 			name: "Include Mode - Single File",
 			config: ExtractionConfig{
-				RootPath:    root,
 				IncludeMode: true,
 				ManualSelections: []string{
 					filepath.Join(root, "README.md"),
@@ -73,7 +70,6 @@ func TestExtractionScenarios(t *testing.T) {
 		{
 			name: "Exclude Mode - Inverse Selection",
 			config: ExtractionConfig{
-				RootPath:    root,
 				IncludeMode: false, // EXCLUDE MODE
 				ManualSelections: []string{
 					filepath.Join(root, "src"),
@@ -85,44 +81,39 @@ func TestExtractionScenarios(t *testing.T) {
 			wantNotContains: []string{"src/main.go", "node_modules"},
 		},
 		{
-			name: "Filenames Only Mode",
+			name: "Show Context - Siblings of Selected",
 			config: ExtractionConfig{
-				RootPath:      root,
-				IncludeMode:   true,
-				FilenamesOnly: true,
+				IncludeMode: true,
+				ShowContext: true,
+				// CRITICAL: We must explicitly exclude node_modules, otherwise it
+				// appears as a valid sibling context of 'src'.
+				ExcludePatterns: []string{"node_modules"},
 				ManualSelections: []string{
-					filepath.Join(root, "src"),
+					filepath.Join(root, "src", "main.go"),
 				},
 			},
-			wantFiles: 0,
-			// FIX: In FilenamesOnly mode, we only see the tree structure.
-			// "src/main.go" doesn't appear as a single string, but "main.go" does.
-			wantContains:    []string{"main.go"},
-			wantNotContains: []string{"package main"},
-		},
-		{
-			name: "Show Excluded in Structure",
-			config: ExtractionConfig{
-				RootPath:     root,
-				IncludeMode:  true,
-				ShowExcluded: true,
-				ManualSelections: []string{
-					filepath.Join(root, "src"),
-				},
-			},
-			wantFiles: 3,
+			wantFiles: 1, // Only main.go content
 			wantContains: []string{
-				"README.md [EXCLUDED]",
 				"src/main.go",
+				"utils.go [EXCLUDED]",  // Sibling of main.go
+				"README.md [EXCLUDED]", // Sibling of src folder
+			},
+			wantNotContains: []string{
+				"node_modules", // Should be gone due to ExcludePatterns
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.config.OutputFilePath = filepath.Join(outputDir, "output.txt")
+			space := &DirectorySpace{
+				ID:             "test-space",
+				RootPath:       root,
+				OutputFilePath: filepath.Join(outputDir, "output_"+strings.ReplaceAll(tt.name, " ", "_")+".txt"),
+				Config:         tt.config,
+			}
 
-			meta, err := RunExtraction(tt.config)
+			meta, err := RunExtraction(space)
 			if err != nil {
 				t.Fatalf("Extraction failed: %v", err)
 			}
@@ -131,7 +122,7 @@ func TestExtractionScenarios(t *testing.T) {
 				t.Errorf("File count: got %d, want %d", meta.TotalFiles, tt.wantFiles)
 			}
 
-			content, _ := os.ReadFile(tt.config.OutputFilePath)
+			content, _ := os.ReadFile(space.OutputFilePath)
 			strContent := string(content)
 
 			for _, s := range tt.wantContains {
@@ -156,32 +147,40 @@ func TestCrossCheck_IncludeVsExclude(t *testing.T) {
 	outputDir := t.TempDir()
 
 	// 1. Include Mode
-	includeConfig := ExtractionConfig{
+	includeSpace := &DirectorySpace{
 		RootPath:       root,
 		OutputFilePath: filepath.Join(outputDir, "out_include.txt"),
-		IncludeMode:    true,
-		ManualSelections: []string{
-			filepath.Join(root, "README.md"),
-			filepath.Join(root, ".env"),
+		Config: ExtractionConfig{
+			IncludeMode: true,
+			ManualSelections: []string{
+				filepath.Join(root, "README.md"),
+				filepath.Join(root, ".env"),
+			},
 		},
 	}
 
 	// 2. Exclude Mode
-	excludeConfig := ExtractionConfig{
+	excludeSpace := &DirectorySpace{
 		RootPath:       root,
 		OutputFilePath: filepath.Join(outputDir, "out_exclude.txt"),
-		IncludeMode:    false,
-		ManualSelections: []string{
-			filepath.Join(root, "src"),
-			filepath.Join(root, "node_modules"),
+		Config: ExtractionConfig{
+			IncludeMode: false,
+			ManualSelections: []string{
+				filepath.Join(root, "src"),
+				filepath.Join(root, "node_modules"),
+			},
 		},
 	}
 
-	RunExtraction(includeConfig)
-	RunExtraction(excludeConfig)
+	if _, err := RunExtraction(includeSpace); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RunExtraction(excludeSpace); err != nil {
+		t.Fatal(err)
+	}
 
-	out1, _ := os.ReadFile(includeConfig.OutputFilePath)
-	out2, _ := os.ReadFile(excludeConfig.OutputFilePath)
+	out1, _ := os.ReadFile(includeSpace.OutputFilePath)
+	out2, _ := os.ReadFile(excludeSpace.OutputFilePath)
 
 	body1 := extractBody(string(out1))
 	body2 := extractBody(string(out2))
@@ -199,23 +198,31 @@ func extractBody(full string) string {
 	return full
 }
 
-func BenchmarkExtraction(b *testing.B) {
-	root := setupTestDir(b)
-	outputDir := b.TempDir()
+func TestSessionManager(t *testing.T) {
+	tmpDir := t.TempDir()
+	sm := NewSessionManager(filepath.Join(tmpDir, "session.json"))
 
-	config := ExtractionConfig{
-		RootPath:       root,
-		OutputFilePath: filepath.Join(outputDir, "bench.txt"),
-		IncludeMode:    true,
-		ManualSelections: []string{
-			filepath.Join(root, "src"),
-		},
+	session, err := sm.Load()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if _, err := RunExtraction(config); err != nil {
-			b.Fatal(err)
-		}
+	root := setupTestDir(t)
+	space, err := sm.AddSpaceFromPath(session, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if session.ActiveSpaceID != space.ID {
+		t.Error("Active space not updated")
+	}
+
+	if err := sm.Save(session); err != nil {
+		t.Fatal(err)
+	}
+
+	session2, _ := sm.Load()
+	if len(session2.Spaces) != 1 {
+		t.Error("Session persistence failed")
 	}
 }

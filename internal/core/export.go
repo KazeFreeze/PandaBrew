@@ -13,8 +13,9 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
-// RunExtraction executes the headless export logic.
-func RunExtraction(config ExtractionConfig) (meta ReportMetadata, err error) {
+// RunExtraction executes the headless export logic for a specific space.
+func RunExtraction(space *DirectorySpace) (meta ReportMetadata, err error) {
+	config := space.Config
 	meta = ReportMetadata{
 		Timestamp:     time.Now(),
 		SelectionMode: "INCLUDE checked items",
@@ -23,12 +24,14 @@ func RunExtraction(config ExtractionConfig) (meta ReportMetadata, err error) {
 		meta.SelectionMode = "EXCLUDE checked items"
 	}
 
-	// Create output file
-	outFile, err := os.Create(config.OutputFilePath)
+	if err := os.MkdirAll(filepath.Dir(space.OutputFilePath), 0o755); err != nil {
+		return meta, fmt.Errorf("failed to create output dir: %w", err)
+	}
+
+	outFile, err := os.Create(space.OutputFilePath)
 	if err != nil {
 		return meta, fmt.Errorf("failed to create output file: %w", err)
 	}
-
 	defer func() {
 		if closeErr := outFile.Close(); closeErr != nil && err == nil {
 			err = closeErr
@@ -39,10 +42,8 @@ func RunExtraction(config ExtractionConfig) (meta ReportMetadata, err error) {
 		return meta, err
 	}
 
-	// Get absolute path of output file to prevent self-inclusion
-	absOutPath, _ := filepath.Abs(config.OutputFilePath)
+	absOutPath, _ := filepath.Abs(space.OutputFilePath)
 
-	// Pass 1: Structure Tree
 	if _, err := fmt.Fprintln(outFile, "### Project Structure"); err != nil {
 		return meta, err
 	}
@@ -50,14 +51,13 @@ func RunExtraction(config ExtractionConfig) (meta ReportMetadata, err error) {
 		return meta, err
 	}
 
-	if err := walkAndProcess(config, outFile, true, &meta, absOutPath); err != nil {
+	if err := walkAndProcess(space.RootPath, config, outFile, true, &meta, absOutPath); err != nil {
 		return meta, err
 	}
 	if _, err := fmt.Fprintln(outFile); err != nil {
 		return meta, err
 	}
 
-	// Pass 2: Content
 	if !config.FilenamesOnly {
 		if _, err := fmt.Fprintln(outFile, "### File Contents"); err != nil {
 			return meta, err
@@ -65,7 +65,7 @@ func RunExtraction(config ExtractionConfig) (meta ReportMetadata, err error) {
 		if _, err := fmt.Fprintln(outFile); err != nil {
 			return meta, err
 		}
-		if err := walkAndProcess(config, outFile, false, &meta, absOutPath); err != nil {
+		if err := walkAndProcess(space.RootPath, config, outFile, false, &meta, absOutPath); err != nil {
 			return meta, err
 		}
 	}
@@ -73,33 +73,30 @@ func RunExtraction(config ExtractionConfig) (meta ReportMetadata, err error) {
 	return meta, nil
 }
 
-func walkAndProcess(cfg ExtractionConfig, w io.Writer, structOnly bool, meta *ReportMetadata, absOutPath string) error {
+func walkAndProcess(root string, cfg ExtractionConfig, w io.Writer, structOnly bool, meta *ReportMetadata, absOutPath string) error {
 	selectionMap := make(map[string]bool, len(cfg.ManualSelections))
 	for _, p := range cfg.ManualSelections {
 		selectionMap[p] = true
 	}
 
-	return filepath.WalkDir(cfg.RootPath, func(path string, d fs.DirEntry, err error) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil // Skip inaccessible files
+			return nil
 		}
-
-		// Prevent self-inclusion (reading the report being written)
 		if path == absOutPath {
 			return nil
 		}
 
-		relPath, _ := filepath.Rel(cfg.RootPath, path)
+		relPath, _ := filepath.Rel(root, path)
 		if relPath == "." {
 			if structOnly {
-				if _, err := fmt.Fprintln(w, filepath.Base(cfg.RootPath)); err != nil {
+				if _, err := fmt.Fprintln(w, filepath.Base(root)); err != nil {
 					return err
 				}
 			}
 			return nil
 		}
 
-		// 1. Global Excludes
 		if isExcluded(relPath, cfg.ExcludePatterns) {
 			if d.IsDir() {
 				return filepath.SkipDir
@@ -107,29 +104,34 @@ func walkAndProcess(cfg ExtractionConfig, w io.Writer, structOnly bool, meta *Re
 			return nil
 		}
 
-		// 2. Selection Check
-		// Check if this path (or parent) matches the manual list
-		matchesSelection := isPathSelected(path, cfg.RootPath, selectionMap)
+		// 1. Is the file itself selected?
+		isSelected := isPathSelected(path, root, selectionMap)
 
-		// Determine if we should KEEP this file based on mode
+		// 2. Decide to Keep vs Skip
 		shouldKeep := false
 		if cfg.IncludeMode {
-			shouldKeep = matchesSelection
+			shouldKeep = isSelected
 		} else {
-			// Exclude Mode: Keep if it DOES NOT match selection
-			shouldKeep = !matchesSelection
+			shouldKeep = !isSelected
 		}
 
-		// 3. Handling Skipped Items
-		if !shouldKeep {
-			// Optimization: In Include Mode, if a directory has no selected children, skip it.
+		// 3. Context Awareness (Siblings)
+		isContext := false
+		if !shouldKeep && cfg.ShowContext {
+			parent := filepath.Dir(path)
+			if isRelevantDirectory(parent, root, selectionMap) {
+				isContext = true
+			}
+		}
+
+		// 4. Skip Logic
+		if !shouldKeep && !isContext {
 			if cfg.IncludeMode && d.IsDir() {
-				if !isRelevantDirectory(path, cfg.RootPath, selectionMap) {
+				if !isRelevantDirectory(path, root, selectionMap) {
 					return filepath.SkipDir
 				}
 			}
 
-			// Show [EXCLUDED] in tree if requested
 			if structOnly && cfg.ShowExcluded {
 				if err := printTreeNode(w, relPath, d.IsDir(), false); err != nil {
 					return err
@@ -138,7 +140,16 @@ func walkAndProcess(cfg ExtractionConfig, w io.Writer, structOnly bool, meta *Re
 			return nil
 		}
 
-		// 4. Output (File is kept)
+		// 5. Output
+		if isContext {
+			if structOnly {
+				if err := printTreeNode(w, relPath, d.IsDir(), false); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
 		if structOnly {
 			if err := printTreeNode(w, relPath, d.IsDir(), true); err != nil {
 				return err
@@ -156,7 +167,6 @@ func walkAndProcess(cfg ExtractionConfig, w io.Writer, structOnly bool, meta *Re
 	})
 }
 
-// Reuse existing helper functions...
 func isRelevantDirectory(currentPath, root string, selections map[string]bool) bool {
 	if isPathSelected(currentPath, root, selections) {
 		return true
