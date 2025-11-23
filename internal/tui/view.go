@@ -51,6 +51,14 @@ func (m AppModel) View() string {
 
 func (m AppModel) renderTabs() string {
 	var tabs []string
+
+	branding := lipgloss.NewStyle().
+		Foreground(colorPurple).
+		Bold(true).
+		Padding(0, 2).
+		Render("ʕ•́ᴥ•̀ʔっ☕ PandaBrew")
+	tabs = append(tabs, branding)
+
 	for _, s := range m.Session.Spaces {
 		name := iconFolder + " " + filepath.Base(s.RootPath)
 		style := styleTab
