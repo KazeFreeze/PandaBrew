@@ -27,6 +27,29 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Width = msg.Width
 		m.Height = msg.Height
 		m.Help.Width = msg.Width
+
+	case NewTabValidatedMsg:
+		if msg.Valid {
+			// Add the new space
+			sm := core.NewSessionManager("")
+			newSpace, err := sm.AddSpaceFromPath(m.Session, msg.Path)
+			if err == nil {
+				m.TabStates[newSpace.ID] = newTabState(newSpace)
+				m.StatusMessage = fmt.Sprintf("✓ Opened new tab: %s", filepath.Base(msg.Path))
+				m.ShowNewTab = false
+				m.NewTabInput.Blur()
+				m.NewTabInput.SetValue("")
+				cmds = append(cmds, loadDirectoryCmd(newSpace.RootPath))
+			} else {
+				m.StatusMessage = "Error: " + err.Error()
+			}
+		} else {
+			m.StatusMessage = "Invalid path: " + msg.Error
+			m.ShowNewTab = false
+			m.NewTabInput.Blur()
+			m.NewTabInput.SetValue("")
+		}
+		return m, tea.Batch(cmds...) // Return immediately to avoid logic conflicts
 	}
 
 	// Handle New Tab Input Mode (highest priority)
@@ -53,7 +76,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.NewTabInput, cmd = m.NewTabInput.Update(msg)
 		return m, cmd
 	}
-
 	// Handle Regular Inputs (second priority)
 	if state != nil && state.ActiveInput > 0 {
 		switch msg := msg.(type) {
@@ -117,28 +139,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				state.rebuildVisibleList()
 				m.StatusMessage = fmt.Sprintf("Loaded %d items", len(msg.Entries))
 			}
-		}
-
-	case NewTabValidatedMsg:
-		if msg.Valid {
-			// Add the new space
-			sm := core.NewSessionManager("")
-			newSpace, err := sm.AddSpaceFromPath(m.Session, msg.Path)
-			if err == nil {
-				m.TabStates[newSpace.ID] = newTabState(newSpace)
-				m.StatusMessage = fmt.Sprintf("✓ Opened new tab: %s", filepath.Base(msg.Path))
-				m.ShowNewTab = false
-				m.NewTabInput.Blur()
-				m.NewTabInput.SetValue("")
-				cmds = append(cmds, loadDirectoryCmd(newSpace.RootPath))
-			} else {
-				m.StatusMessage = "Error: " + err.Error()
-			}
-		} else {
-			m.StatusMessage = "Invalid path: " + msg.Error
-			m.ShowNewTab = false
-			m.NewTabInput.Blur()
-			m.NewTabInput.SetValue("")
 		}
 
 	case ExportProgressMsg:
