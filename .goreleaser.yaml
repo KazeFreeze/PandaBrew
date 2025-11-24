@@ -64,40 +64,6 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
-# Changelog configuration (uses conventional commits)
-changelog:
-  use: github
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
-      - "^ci:"
-      - "^style:"
-      - "merge conflict"
-      - Merge pull request
-      - Merge remote-tracking branch
-      - Merge branch
-  groups:
-    - title: "New Features"
-      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
-      order: 0
-    - title: "Bug Fixes"
-      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
-      order: 1
-    - title: "Performance Improvements"
-      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
-      order: 2
-    - title: "Refactors"
-      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
-      order: 3
-    - title: "Documentation Updates"
-      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
-      order: 4
-    - title: "Other Changes"
-      order: 999
-
 # GitHub Release configuration
 release:
   github:
@@ -132,8 +98,6 @@ release:
     ---
 
     **Full Changelog**: https://github.com/KazeFreeze/PandaBrew/compare/{{ .PreviousTag }}...{{ .Tag }}
-
-    ### What's Changed
 
 # Snapshot configuration (for testing)
 snapshot:
