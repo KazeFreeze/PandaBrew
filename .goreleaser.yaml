@@ -12,9 +12,9 @@ before:
 
 # Build configuration
 builds:
-  - id: PandaBrew
-    binary: PandaBrew
-    main: ./cmd/PandaBrew
+  - id: pandabrew
+    binary: pandabrew
+    main: ./cmd/pandabrew
     env:
       - CGO_ENABLED=0
     ldflags:
@@ -41,8 +41,10 @@ builds:
 
 # Archive configuration
 archives:
-  - id: PandaBrew-archive
-    format: tar.gz
+  - id: pandabrew-archive
+    builds:
+      - pandabrew
+    rlcp: true
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -51,13 +53,13 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    format_overrides:
-      - goos: windows
-        format: zip
     files:
       - README.md
       - LICENSE*
       - docs/*
+    format_overrides:
+      - goos: windows
+        format: zip
 
 # Checksum configuration
 checksum:
@@ -85,10 +87,10 @@ release:
     tar -xzf PandaBrew_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz
 
     # Move to PATH
-    sudo mv PandaBrew /usr/local/bin/
+    sudo mv pandabrew /usr/local/bin/
 
     # Make executable (if needed)
-    sudo chmod +x /usr/local/bin/PandaBrew
+    sudo chmod +x /usr/local/bin/pandabrew
     ```
 
     #### Windows
@@ -99,14 +101,9 @@ release:
 
     **Full Changelog**: https://github.com/KazeFreeze/PandaBrew/compare/{{ .PreviousTag }}...{{ .Tag }}
 
-# Snapshot configuration (for testing)
-snapshot:
-  name_template: "{{ incpatch .Version }}-next"
-
-# AUR package (for Arch/CachyOS users)
 nfpms:
-  - id: PandaBrew-aur
-    package_name: PandaBrew
+  - id: pandabrew-aur
+    package_name: pandabrew
     homepage: https://github.com/KazeFreeze/PandaBrew
     description: |
       A TUI tool for selective file extraction and project documentation.
@@ -117,8 +114,10 @@ nfpms:
     formats:
       - archlinux
     bindir: /usr/bin
+    builds:
+      - pandabrew
     contents:
       - src: README.md
-        dst: /usr/share/doc/PandaBrew/README.md
+        dst: /usr/share/doc/pandabrew/README.md
       - src: LICENSE
-        dst: /usr/share/licenses/PandaBrew/LICENSE
+        dst: /usr/share/licenses/pandabrew/LICENSE
