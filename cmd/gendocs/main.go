@@ -9,16 +9,13 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
-	// Import root command - adjust this path to match project structure
-	// "github.com/KazeFreeze/PandaBrew/cmd/pandabrew"
 )
 
 func main() {
-	// Create the root command - replace this with actual root command
-	// For now, creating a placeholder structure
+	// Create the root command
 	rootCmd := createRootCommand()
 
-	// Ensure directories exist and clean old generated files
+	// Ensure directories exist
 	if err := ensureDir("./docs"); err != nil {
 		log.Fatalf("Failed to create docs directory: %v", err)
 	}
@@ -26,10 +23,17 @@ func main() {
 		log.Fatalf("Failed to create manpages directory: %v", err)
 	}
 
-	// Clean old generated markdown files (except todo.md)
+	// Clean old generated markdown files (except todo.md and manual docs)
 	cleanOldDocs("./docs")
 
-	// Generate Markdown documentation
+	// Generate additional documentation FIRST (before cobra docs)
+	fmt.Println("Generating additional documentation...")
+	if err := generateAdditionalDocs(); err != nil {
+		log.Fatalf("Failed to generate additional docs: %v", err)
+	}
+	fmt.Println("✓ Additional documentation generated")
+
+	// Generate Markdown documentation from Cobra commands
 	fmt.Println("Generating Markdown documentation...")
 	if err := doc.GenMarkdownTree(rootCmd, "./docs"); err != nil {
 		log.Fatalf("Failed to generate Markdown docs: %v", err)
@@ -49,17 +53,10 @@ func main() {
 	}
 	fmt.Println("✓ Man pages generated in ./manpages/")
 
-	// Generate additional documentation files
-	if err := generateAdditionalDocs(); err != nil {
-		log.Fatalf("Failed to generate additional docs: %v", err)
-	}
-	fmt.Println("✓ Additional documentation generated")
-
 	fmt.Println("\nDocumentation generation complete!")
 }
 
 // createRootCommand creates application's root command
-// Replace this with actual root command import
 func createRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "pandabrew",
@@ -72,8 +69,17 @@ management and smart file filtering.`,
 		Version: "1.0.0",
 	}
 
-	// Add subcommands here if any
-	// rootCmd.AddCommand(versionCmd, extractCmd, etc.)
+	// Add example subcommands for better documentation
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		Run:   func(cmd *cobra.Command, args []string) {},
+	})
+
+	// Add flags for documentation
+	rootCmd.PersistentFlags().String("root", ".", "Project root directory")
+	rootCmd.PersistentFlags().String("output", "project_extraction.txt", "Output file path")
+	rootCmd.PersistentFlags().Bool("headless", false, "Run in headless mode without TUI")
 
 	return rootCmd
 }
@@ -116,7 +122,32 @@ The default mode provides a full-featured terminal UI with:
 
 ### Keyboard Shortcuts
 
-See the main README.md for complete keyboard shortcut reference.
+#### Navigation
+- ` + "`↑/↓` or `k/j`" + ` - Move cursor up/down
+- ` + "`PgUp/PgDn`" + ` - Page up/down
+- ` + "`Home/End`" + ` - Jump to top/bottom
+- ` + "`→/←` or `l/h`" + ` - Expand/collapse directories
+
+#### Selection
+- ` + "`Space`" + ` - Toggle selection (recursive for directories)
+- ` + "`a`" + ` - Select all visible items
+- ` + "`A`" + ` - Deselect all items
+- ` + "`Enter`" + ` - Toggle directory expansion
+
+#### Actions
+- ` + "`e`" + ` - Export selected files
+- ` + "`/`" + ` - Start filtering
+- ` + "`Esc`" + ` - Clear filter/exit input mode
+- ` + "`?`" + ` - Show help
+
+#### Workspace Management
+- ` + "`Tab`" + ` - Next workspace
+- ` + "`Shift+Tab`" + ` - Previous workspace
+- ` + "`Ctrl+n`" + ` - New workspace
+- ` + "`Ctrl+w`" + ` - Close current workspace
+
+#### Application
+- ` + "`Ctrl+c` or `q`" + ` - Quit application
 
 ## Headless Mode
 
@@ -125,26 +156,96 @@ For CI/CD and automation workflows:
 ` + "```bash" + `
 pandabrew --headless \
   --root ./my-project \
-  --output llm-context.txt \
-  --include "*.go,*.md" \
-  --exclude "vendor/,*_test.go"
+  --output llm-context.txt
+` + "```" + `
+
+### Use Cases
+
+**CI/CD Integration:**
+` + "```bash" + `
+# In GitHub Actions
+- name: Generate codebase context
+  run: pandabrew --headless --root . --output context.txt
+` + "```" + `
+
+**Pre-commit Hook:**
+` + "```bash" + `
+#!/bin/bash
+pandabrew --headless --root . --output docs/codebase.txt
+git add docs/codebase.txt
+` + "```" + `
+
+**Documentation Generation:**
+` + "```bash" + `
+# Generate context for different modules
+pandabrew --headless --root ./backend --output backend-context.txt
+pandabrew --headless --root ./frontend --output frontend-context.txt
 ` + "```" + `
 
 ## Configuration
 
 PandaBrew stores session data in ` + "`pandabrew_session.json`" + ` in the current directory.
 
-Session data includes:
+### Session Data
+
+The session file contains:
 - Open workspace tabs
-- File selections
+- File selections per workspace
 - Filter configurations
-- Output paths
+- Output file paths
+- Window state
+
+### Session File Format
+
+` + "```json" + `
+{
+  "workspaces": [
+    {
+      "root": "/path/to/project",
+      "output": "project_extraction.txt",
+      "selections": {
+        "path/to/file.go": true
+      }
+    }
+  ],
+  "active_workspace": 0
+}
+` + "```" + `
 
 ## Exit Codes
 
 - ` + "`0`" + ` - Success
-- ` + "`1`" + ` - General error
-- ` + "`2`" + ` - Invalid arguments
+- ` + "`1`" + ` - General error (invalid arguments, file access errors, etc.)
+- ` + "`2`" + ` - Invalid command-line arguments
+
+## Output Format
+
+The generated output file contains:
+
+` + "```" + `
+--- Project Extraction Report ---
+Timestamp: 2024-01-15T10:30:00Z
+Selection Mode: INCLUDE checked items
+---
+
+### Project Structure
+
+project/
+├── src/
+│   ├── main.go
+│   └── utils.go
+└── README.md
+
+### File Contents
+
+--- file: src/main.go ---
+package main
+...
+
+--- file: src/utils.go ---
+package utils
+...
+` + "```" + `
 
 ## Examples
 
@@ -153,19 +254,85 @@ Session data includes:
 pandabrew --root ~/projects/myapp --output go-context.txt
 ` + "```" + `
 
-### Headless with Filters
+### Multiple Projects in Tabs
 ` + "```bash" + `
-pandabrew --headless \
-  --root . \
-  --output docs.txt \
-  --include "*.md,*.txt"
+# Start with first project
+pandabrew --root ~/project1
+
+# In TUI:
+# 1. Press Ctrl+n to open new workspace
+# 2. Navigate to different directory
+# 3. Select files and export
 ` + "```" + `
 
-### Multiple Projects
+### Automated Documentation
 ` + "```bash" + `
-# Open multiple projects in tabs
-pandabrew --root ~/project1
-# Then use Tab key to open additional workspaces
+#!/bin/bash
+# Generate context for LLM analysis
+pandabrew --headless \
+  --root . \
+  --output docs/codebase-snapshot-$(date +%Y%m%d).txt
+
+echo "Context generated for $(git rev-parse --short HEAD)"
+` + "```" + `
+
+## Troubleshooting
+
+### Permission Denied
+` + "```bash" + `
+# Ensure write permissions
+chmod +w project_extraction.txt
+` + "```" + `
+
+### Session File Corrupted
+` + "```bash" + `
+# Remove and restart
+rm pandabrew_session.json
+pandabrew
+` + "```" + `
+
+### Large Projects Performance
+For very large projects (10,000+ files):
+- Use filtering to narrow scope
+- Consider processing subdirectories separately
+- Use headless mode for automated tasks
+
+## Tips and Best Practices
+
+1. **Use filters** - Press ` + "`/`" + ` to filter by name patterns
+2. **Keyboard-first** - Learn shortcuts for faster navigation
+3. **Save sessions** - Session data persists between runs
+4. **Multiple workspaces** - Work on related projects simultaneously
+5. **Headless for CI** - Integrate into build pipelines
+6. **Version control output** - Track changes to extracted context
+
+## Integration Examples
+
+### With Claude/ChatGPT
+` + "```bash" + `
+# Generate context
+pandabrew --headless --root . --output context.txt
+
+# Then upload context.txt to Claude/ChatGPT for:
+# - Code review
+# - Architecture analysis
+# - Documentation generation
+# - Bug investigation
+` + "```" + `
+
+### With Git Hooks
+` + "```bash" + `
+# .git/hooks/pre-commit
+#!/bin/bash
+pandabrew --headless --root . --output .context-snapshot.txt
+` + "```" + `
+
+### In Makefiles
+` + "```makefile" + `
+.PHONY: context
+context:
+	pandabrew --headless --root . --output docs/codebase.txt
+	@echo "Codebase context updated"
 ` + "```" + `
 `
 
@@ -184,12 +351,30 @@ pandabrew --root ~/project1
 brew install kazefreeze/tap/pandabrew
 ` + "```" + `
 
-### AUR (Arch Linux)
+### APT (Debian/Ubuntu)
 
 ` + "```bash" + `
-yay -S pandabrew
-# or
-paru -S pandabrew
+# Download the .deb package
+wget https://github.com/KazeFreeze/PandaBrew/releases/latest/download/pandabrew_<version>_linux_amd64.deb
+
+# Install
+sudo dpkg -i pandabrew_<version>_linux_amd64.deb
+
+# Or install directly
+sudo apt install ./pandabrew_<version>_linux_amd64.deb
+` + "```" + `
+
+### YUM/DNF (RHEL/Fedora/CentOS)
+
+` + "```bash" + `
+# Download the .rpm package
+wget https://github.com/KazeFreeze/PandaBrew/releases/latest/download/pandabrew_<version>_linux_amd64.rpm
+
+# Install with yum
+sudo yum install pandabrew_<version>_linux_amd64.rpm
+
+# Or with dnf
+sudo dnf install pandabrew_<version>_linux_amd64.rpm
 ` + "```" + `
 
 ## Pre-built Binaries
@@ -207,8 +392,16 @@ curl -L https://github.com/KazeFreeze/PandaBrew/releases/latest/download/PandaBr
 sudo mv pandabrew /usr/local/bin/
 sudo chmod +x /usr/local/bin/pandabrew
 
+# Install man pages (optional)
+sudo mkdir -p /usr/share/man/man1
+sudo cp share/man/man1/*.gz /usr/share/man/man1/
+
+# Update man database
+sudo mandb
+
 # Verify installation
 pandabrew --version
+man pandabrew
 ` + "```" + `
 
 ### macOS
@@ -221,15 +414,27 @@ curl -L https://github.com/KazeFreeze/PandaBrew/releases/latest/download/PandaBr
 sudo mv pandabrew /usr/local/bin/
 sudo chmod +x /usr/local/bin/pandabrew
 
+# Install man pages (optional)
+sudo mkdir -p /usr/local/share/man/man1
+sudo cp share/man/man1/*.gz /usr/local/share/man/man1/
+
 # Verify installation
 pandabrew --version
+man pandabrew
 ` + "```" + `
+
+**Note for Apple Silicon (M1/M2/M3):** Download the ` + "`Darwin_arm64`" + ` version instead of ` + "`Darwin_x86_64`" + `.
 
 ### Windows
 
-1. Download the ZIP file for Windows from the releases page
+1. Download the ZIP file for Windows from the [releases page](https://github.com/KazeFreeze/PandaBrew/releases/latest)
 2. Extract to a directory (e.g., ` + "`C:\\Program Files\\PandaBrew`" + `)
-3. Add the directory to your PATH environment variable
+3. Add the directory to your PATH environment variable:
+   - Press ` + "`Win + X`" + ` and select "System"
+   - Click "Advanced system settings"
+   - Click "Environment Variables"
+   - Under "System variables", find and edit "Path"
+   - Add the PandaBrew directory path
 4. Open a new terminal and verify: ` + "`pandabrew --version`" + `
 
 ## Build from Source
@@ -249,18 +454,39 @@ cd PandaBrew
 # Install dependencies
 go mod tidy
 
+# Run tests
+go test -v ./...
+
 # Build
 go build -o pandabrew ./cmd/pandabrew
 
 # Install globally (optional)
 sudo mv pandabrew /usr/local/bin/
+sudo chmod +x /usr/local/bin/pandabrew
+
+# Verify installation
+pandabrew --version
+` + "```" + `
+
+### Build with Custom Flags
+
+` + "```bash" + `
+# Build with version info
+go build -ldflags="-s -w -X main.version=1.0.0 -X main.commit=$(git rev-parse HEAD)" \
+  -o pandabrew ./cmd/pandabrew
 ` + "```" + `
 
 ## Verify Installation
 
 ` + "```bash" + `
+# Check version
 pandabrew --version
+
+# View help
 pandabrew --help
+
+# Read manual (Linux/macOS)
+man pandabrew
 ` + "```" + `
 
 ## Troubleshooting
@@ -273,17 +499,132 @@ sudo chmod +x /usr/local/bin/pandabrew
 
 ### Command Not Found (Windows)
 
-Make sure the PandaBrew directory is in your PATH environment variable.
+Make sure the PandaBrew directory is in your PATH environment variable. After adding to PATH, **restart your terminal**.
+
+### Command Not Found (Linux/macOS)
+
+` + "```bash" + `
+# Check if binary is in PATH
+which pandabrew
+
+# If not, ensure /usr/local/bin is in PATH
+echo $PATH | grep /usr/local/bin
+
+# Add to PATH if missing (add to ~/.bashrc or ~/.zshrc)
+export PATH="/usr/local/bin:$PATH"
+` + "```" + `
 
 ### Man Pages Not Showing
 
 ` + "```bash" + `
-# Linux/macOS - ensure man pages are installed
-man pandabrew
+# Linux - update man database
+sudo mandb
+
+# macOS - check man path
+man -w pandabrew
+
+# If man pages aren't found, verify they're installed
+ls -la /usr/share/man/man1/pandabrew.1.gz     # Linux
+ls -la /usr/local/share/man/man1/pandabrew.1.gz  # macOS
 ` + "```" + `
 
-If man pages don't work, reinstall using a package manager or check that
-` + "`/usr/share/man/man1/`" + ` contains ` + "`pandabrew.1.gz`" + `.
+### Package Installation Conflicts
+
+` + "```bash" + `
+# Debian/Ubuntu - if there's a conflict
+sudo apt remove pandabrew
+sudo apt install ./pandabrew_<version>_linux_amd64.deb
+
+# RHEL/Fedora - if there's a conflict
+sudo yum remove pandabrew
+sudo yum install pandabrew_<version>_linux_amd64.rpm
+` + "```" + `
+
+## Uninstallation
+
+### Homebrew
+
+` + "```bash" + `
+brew uninstall pandabrew
+` + "```" + `
+
+### APT (Debian/Ubuntu)
+
+` + "```bash" + `
+sudo apt remove pandabrew
+` + "```" + `
+
+### YUM/DNF (RHEL/Fedora)
+
+` + "```bash" + `
+sudo yum remove pandabrew
+# or
+sudo dnf remove pandabrew
+` + "```" + `
+
+### Manual Installation
+
+` + "```bash" + `
+# Remove binary
+sudo rm /usr/local/bin/pandabrew
+
+# Remove man pages (optional)
+sudo rm /usr/share/man/man1/pandabrew.1.gz     # Linux
+sudo rm /usr/local/share/man/man1/pandabrew.1.gz  # macOS
+
+# Update man database
+sudo mandb  # Linux
+` + "```" + `
+
+## Platform-Specific Notes
+
+### Linux
+- Uses XDG directories for configuration
+- Man pages integrate with system documentation
+- Works with most terminal emulators
+
+### macOS
+- Compatible with both Intel and Apple Silicon
+- Integrates with native Terminal and iTerm2
+- May require security approval on first run (System Preferences → Security)
+
+### Windows
+- Works with PowerShell, Command Prompt, and Windows Terminal
+- No ANSI color support in older Command Prompt versions
+- Use Windows Terminal for best experience
+
+## Updating
+
+### Homebrew
+
+` + "```bash" + `
+brew upgrade pandabrew
+` + "```" + `
+
+### Package Managers
+
+` + "```bash" + `
+# Debian/Ubuntu
+sudo apt update
+sudo apt upgrade pandabrew
+
+# RHEL/Fedora
+sudo yum update pandabrew
+# or
+sudo dnf update pandabrew
+` + "```" + `
+
+### Manual Installation
+
+Download and install the latest release following the installation steps above.
+
+## Support
+
+If you encounter installation issues:
+
+1. Check the [GitHub Issues](https://github.com/KazeFreeze/PandaBrew/issues)
+2. Review the [troubleshooting section](#troubleshooting)
+3. Open a new issue with your platform and error details
 `
 
 	if err := os.WriteFile("./docs/INSTALLATION.md", []byte(installDoc), 0o644); err != nil {
@@ -305,12 +646,20 @@ func cleanOldDocs(docsDir string) {
 		return // Directory might not exist yet
 	}
 
+	protectedFiles := map[string]bool{
+		"todo.md":          true,
+		"CLI_REFERENCE.md": true,
+		"INSTALLATION.md":  true,
+	}
+
 	for _, file := range files {
-		// Keep todo.md and other non-generated files
-		if file.Name() == "todo.md" || !strings.HasSuffix(file.Name(), ".md") {
+		// Skip protected files
+		if protectedFiles[file.Name()] {
 			continue
 		}
-		// Remove old generated docs
-		_ = os.Remove(filepath.Join(docsDir, file.Name()))
+		// Only remove generated cobra docs
+		if strings.HasSuffix(file.Name(), ".md") {
+			_ = os.Remove(filepath.Join(docsDir, file.Name()))
+		}
 	}
 }
