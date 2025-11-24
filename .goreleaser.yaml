@@ -177,30 +177,6 @@ nfpms:
     scripts:
       postinstall: scripts/postinstall.sh
 
-# Homebrew tap
-brews:
-  - name: pandabrew
-    repository:
-      owner: KazeFreeze
-      name: homebrew-tap
-      branch: main
-    ids:
-      - pandabrew-archive
-    homepage: https://github.com/KazeFreeze/PandaBrew
-    description: "A TUI tool for selective file extraction and project documentation"
-    license: "MIT"
-    install: |
-      bin.install "pandabrew"
-      doc.install "README.md"
-      doc.install "LICENSE"
-      doc.install Dir["docs/*.md"]
-      man1.install Dir["share/man/man1/*.gz"]
-    test: |
-      system "#{bin}/pandabrew", "--version"
-    dependencies:
-      - name: go
-        type: build
-
 # Announcements (optional - skip for patch releases)
 announce:
   skip: "{{gt .Patch 0}}"
