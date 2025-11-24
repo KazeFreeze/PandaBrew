@@ -10,3 +10,4 @@
 - [ ] add option to extract dir structure only even in include mode
       but take note of redundant and conflicting settings
 - [x] fix session file not persisting
+- [ ] feat: persist view and selection in session
