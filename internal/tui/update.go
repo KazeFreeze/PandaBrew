@@ -30,7 +30,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case NewTabValidatedMsg:
 		if msg.Valid {
-			// Add the new space
 			sm := core.NewSessionManager("")
 			newSpace, err := sm.AddSpaceFromPath(m.Session, msg.Path)
 			if err == nil {
@@ -40,6 +39,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.NewTabInput.Blur()
 				m.NewTabInput.SetValue("")
 				cmds = append(cmds, loadDirectoryCmd(newSpace.RootPath))
+				_ = sm.Save(m.Session)
 			} else {
 				m.StatusMessage = "Error: " + err.Error()
 			}
@@ -49,10 +49,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.NewTabInput.Blur()
 			m.NewTabInput.SetValue("")
 		}
-		return m, tea.Batch(cmds...) // Return immediately to avoid logic conflicts
-	}
+		return m, tea.Batch(cmds...)
 
-	// Handle New Tab Input Mode (highest priority)
+		// Handle New Tab Input Mode
+	}
 	if m.ShowNewTab {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
@@ -76,7 +76,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.NewTabInput, cmd = m.NewTabInput.Update(msg)
 		return m, cmd
 	}
-	// Handle Regular Inputs (second priority)
+
+	// Handle Regular Inputs
 	if state != nil && state.ActiveInput > 0 {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
@@ -88,10 +89,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				state.ActiveInput = 0
 				blurAll(state)
-				// Sync values back to Config
 				if state.InputRoot.Value() != space.RootPath {
 					space.RootPath = state.InputRoot.Value()
-					// Reset tree on root change
 					state.TreeRoot = &TreeNode{
 						Name:     filepath.Base(space.RootPath),
 						FullPath: space.RootPath,
@@ -103,16 +102,15 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					cmds = append(cmds, loadDirectoryCmd(space.RootPath))
 				}
 				space.OutputFilePath = state.InputOutput.Value()
-
-				// Parse comma-separated lists for patterns
 				space.Config.IncludePatterns = splitClean(state.InputInclude.Value())
 				space.Config.ExcludePatterns = splitClean(state.InputExclude.Value())
 
+				sm := core.NewSessionManager("")
+				_ = sm.Save(m.Session)
 				return m, tea.Batch(cmds...)
 			}
 		}
 
-		// Forward to active input
 		switch state.ActiveInput {
 		case 1:
 			state.InputRoot, cmd = state.InputRoot.Update(msg)
@@ -128,7 +126,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
-	// Async Results
 	case DirLoadedMsg:
 		m.Loading = false
 		if msg.Err != nil {
@@ -163,10 +160,32 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Quit):
+			sm := core.NewSessionManager("")
+			_ = sm.Save(m.Session)
 			return m, tea.Quit
 
 		case key.Matches(msg, m.keys.Help):
 			m.ShowHelp = !m.ShowHelp
+
+		case key.Matches(msg, m.keys.Refresh):
+			if state != nil && state.TreeRoot != nil {
+				// Refresh logic:
+				// 1. Always refresh root
+				// 2. Refresh all currently expanded folders
+				m.Loading = true
+				m.StatusMessage = "Refreshing view..."
+
+				// Root cmd
+				cmds = append(cmds, loadDirectoryCmd(space.RootPath))
+
+				// Recursive expanded folders cmds
+				expanded := CollectExpandedPaths(state.TreeRoot)
+				for _, p := range expanded {
+					if p != space.RootPath { // Avoid dup of root
+						cmds = append(cmds, loadDirectoryCmd(p))
+					}
+				}
+			}
 
 		case key.Matches(msg, m.keys.NewTab):
 			m.ShowNewTab = true
@@ -179,11 +198,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if err := sm.RemoveSpace(m.Session, space.ID); err != nil {
 					m.StatusMessage = "Error: " + err.Error()
 				} else {
-					// Remove the tab state
 					delete(m.TabStates, space.ID)
 					m.StatusMessage = fmt.Sprintf("✓ Closed tab: %s", filepath.Base(space.RootPath))
-
-					// Load the new active space if needed
 					newSpace := m.Session.GetActiveSpace()
 					if newSpace != nil {
 						newState := m.TabStates[newSpace.ID]
@@ -207,7 +223,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				nextIdx := (currIdx + 1) % len(m.Session.Spaces)
 				m.Session.ActiveSpaceID = m.Session.Spaces[nextIdx].ID
-				// Init new tab if needed
 				newSpace := m.Session.GetActiveSpace()
 				if newSpace != nil {
 					newState := m.TabStates[newSpace.ID]
@@ -215,6 +230,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						cmds = append(cmds, loadDirectoryCmd(newSpace.RootPath))
 					}
 				}
+				sm := core.NewSessionManager("")
+				_ = sm.Save(m.Session)
 			}
 
 		case key.Matches(msg, m.keys.Root):
@@ -249,6 +266,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.ToggleX):
 			if space != nil {
 				space.Config.ShowExcluded = !space.Config.ShowExcluded
+			}
+		case key.Matches(msg, m.keys.ToggleV):
+			if space != nil {
+				space.Config.StructureView = !space.Config.StructureView
 			}
 
 		case key.Matches(msg, m.keys.Up):
@@ -288,7 +309,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					node.Expanded = false
 					state.rebuildVisibleList()
 				} else if node.Parent != nil {
-					// Jump to parent
 					for i, n := range state.VisibleNodes {
 						if n == node.Parent {
 							state.CursorIndex = i
@@ -308,6 +328,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Export):
 			if space != nil {
+				// Feature: Extract Everything in View
+				// If enabled, capture TUI state and pass to core
+				space.Config.AlwaysShowStructure = []string{} // Reset
+				if space.Config.StructureView && state != nil && state.TreeRoot != nil {
+					space.Config.AlwaysShowStructure = CollectExpandedPaths(state.TreeRoot)
+				}
+
 				m.Loading = true
 				m.ExportProgress = 0
 				m.StatusMessage = "Starting export..."

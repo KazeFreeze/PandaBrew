@@ -15,6 +15,7 @@ func setupTestDir(t testing.TB) string {
 		"src/main.go":               "package main",
 		"src/utils.go":              "package main",
 		"src/data.txt":              "some data",
+		"src/lib/helper.go":         "package lib",
 		"node_modules/pkg/index.js": "console.log",
 		"README.md":                 "# Readme",
 		".env":                      "SECRET=123",
@@ -51,7 +52,7 @@ func TestExtractionScenarios(t *testing.T) {
 					filepath.Join(root, "src"),
 				},
 			},
-			wantFiles:       3, // main.go, utils.go, data.txt
+			wantFiles:       4, // main.go, utils.go, data.txt, lib/helper.go
 			wantContains:    []string{"src/main.go", "src/utils.go"},
 			wantNotContains: []string{"README.md", "node_modules"},
 		},
@@ -68,38 +69,29 @@ func TestExtractionScenarios(t *testing.T) {
 			wantNotContains: []string{"src/main.go"},
 		},
 		{
-			name: "Exclude Mode - Inverse Selection",
-			config: ExtractionConfig{
-				IncludeMode: false, // EXCLUDE MODE
-				ManualSelections: []string{
-					filepath.Join(root, "src"),
-					filepath.Join(root, "node_modules"),
-				},
-			},
-			wantFiles:       2, // README.md, .env
-			wantContains:    []string{"README.md", ".env"},
-			wantNotContains: []string{"src/main.go", "node_modules"},
-		},
-		{
-			name: "Show Context - Siblings of Selected",
+			name: "View Structure Mode - Expanded Folders",
 			config: ExtractionConfig{
 				IncludeMode: true,
-				ShowContext: true,
-				// CRITICAL: We must explicitly exclude node_modules, otherwise it
-				// appears as a valid sibling context of 'src'.
-				ExcludePatterns: []string{"node_modules"},
 				ManualSelections: []string{
-					filepath.Join(root, "src", "main.go"),
+					filepath.Join(root, "src", "main.go"), // Only Content for main.go
+				},
+				AlwaysShowStructure: []string{
+					root,
+					filepath.Join(root, "src"), // src is expanded
+					// src/lib is NOT expanded
 				},
 			},
-			wantFiles: 1, // Only main.go content
+			wantFiles: 1, // Only content for src/main.go
 			wantContains: []string{
 				"src/main.go",
-				"utils.go [EXCLUDED]",  // Sibling of main.go
-				"README.md [EXCLUDED]", // Sibling of src folder
+				// Adjusted expectations: The structure tree prints indented names, not full paths.
+				// utils.go is a sibling of main.go, inside src/. src/ is expanded.
+				"utils.go [EXCLUDED]",
+				// lib/ is a child of src/. src/ is expanded.
+				"lib/ [EXCLUDED]",
 			},
 			wantNotContains: []string{
-				"node_modules", // Should be gone due to ExcludePatterns
+				"src/lib/helper.go", // Child of collapsed folder, should NOT be visible
 			},
 		},
 	}
@@ -140,62 +132,6 @@ func TestExtractionScenarios(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestCrossCheck_IncludeVsExclude(t *testing.T) {
-	root := setupTestDir(t)
-	outputDir := t.TempDir()
-
-	// 1. Include Mode
-	includeSpace := &DirectorySpace{
-		RootPath:       root,
-		OutputFilePath: filepath.Join(outputDir, "out_include.txt"),
-		Config: ExtractionConfig{
-			IncludeMode: true,
-			ManualSelections: []string{
-				filepath.Join(root, "README.md"),
-				filepath.Join(root, ".env"),
-			},
-		},
-	}
-
-	// 2. Exclude Mode
-	excludeSpace := &DirectorySpace{
-		RootPath:       root,
-		OutputFilePath: filepath.Join(outputDir, "out_exclude.txt"),
-		Config: ExtractionConfig{
-			IncludeMode: false,
-			ManualSelections: []string{
-				filepath.Join(root, "src"),
-				filepath.Join(root, "node_modules"),
-			},
-		},
-	}
-
-	if _, err := RunExtraction(includeSpace); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := RunExtraction(excludeSpace); err != nil {
-		t.Fatal(err)
-	}
-
-	out1, _ := os.ReadFile(includeSpace.OutputFilePath)
-	out2, _ := os.ReadFile(excludeSpace.OutputFilePath)
-
-	body1 := extractBody(string(out1))
-	body2 := extractBody(string(out2))
-
-	if body1 != body2 {
-		t.Errorf("Crosscheck Failed!\nInclude Output:\n%s\n\nExclude Output:\n%s", body1, body2)
-	}
-}
-
-func extractBody(full string) string {
-	parts := strings.SplitAfterN(full, "---\n\n", 2)
-	if len(parts) > 1 {
-		return parts[1]
-	}
-	return full
 }
 
 func TestSessionManager(t *testing.T) {

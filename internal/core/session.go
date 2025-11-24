@@ -2,7 +2,7 @@
 package core
 
 import (
-	"crypto/sha256"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	DefaultSessionFile = "pandabrew_session.json"
+	// DefaultSessionFilename is just the name, path determines where it lives
+	DefaultSessionFilename = "pandabrew_session.json"
 )
 
 // SessionManager handles loading, saving, and modifying the global session.
@@ -20,10 +21,21 @@ type SessionManager struct {
 	FilePath string
 }
 
-// NewSessionManager creates a manager pointing to a specific file.
+// NewSessionManager creates a manager pointing to the system-wide config.
+// If path is provided, it overrides the default logic.
 func NewSessionManager(path string) *SessionManager {
 	if path == "" {
-		path = DefaultSessionFile
+		configDir, err := os.UserConfigDir()
+		if err != nil {
+			// Fallback to local file if user config dir is unavailable
+			path = DefaultSessionFilename
+		} else {
+			// e.g. ~/.config/pandabrew/session.json
+			appDir := filepath.Join(configDir, "pandabrew")
+			// Ensure directory exists (best effort)
+			_ = os.MkdirAll(appDir, 0o755)
+			path = filepath.Join(appDir, DefaultSessionFilename)
+		}
 	}
 	return &SessionManager{FilePath: path}
 }
@@ -46,6 +58,12 @@ func (sm *SessionManager) Load() (*Session, error) {
 	if err := json.Unmarshal(data, &session); err != nil {
 		return nil, fmt.Errorf("corrupt session file: %w", err)
 	}
+
+	// Validate and clean loaded spaces
+	for _, space := range session.Spaces {
+		sm.ValidateSpace(space)
+	}
+
 	return &session, nil
 }
 
@@ -75,14 +93,8 @@ func (sm *SessionManager) AddSpaceFromPath(s *Session, rawPath string) (*Directo
 		return nil, fmt.Errorf("path is not a directory: %s", absPath)
 	}
 
-	// 2. Check for duplicates (update active if exists)
-	id := generateID(absPath)
-	for _, space := range s.Spaces {
-		if space.ID == id {
-			s.ActiveSpaceID = id
-			return space, nil
-		}
-	}
+	// 2. Create New Space (Always unique)
+	id := generateRandomID()
 
 	// 3. Create Smart Default Output Path
 	parentDir := filepath.Dir(absPath)
@@ -98,22 +110,26 @@ func (sm *SessionManager) AddSpaceFromPath(s *Session, rawPath string) (*Directo
 			IncludePatterns:  []string{},
 			ExcludePatterns:  []string{".git", "node_modules", "__pycache__", "vendor"},
 			ManualSelections: []string{},
+			StructureView:    false, // Default off
+			ShowExcluded:     false, // Default off (explicit)
 		},
 	}
 
 	s.Spaces = append(s.Spaces, newSpace)
 	s.ActiveSpaceID = newSpace.ID
+
+	// Auto-save
+	_ = sm.Save(s)
+
 	return newSpace, nil
 }
 
 // RemoveSpace removes a space by ID and adjusts the active space if needed.
 func (sm *SessionManager) RemoveSpace(s *Session, spaceID string) error {
-	// Don't allow removal of the last space
 	if len(s.Spaces) <= 1 {
 		return fmt.Errorf("cannot close the last tab")
 	}
 
-	// Find and remove the space
 	idx := -1
 	for i, space := range s.Spaces {
 		if space.ID == spaceID {
@@ -126,47 +142,48 @@ func (sm *SessionManager) RemoveSpace(s *Session, spaceID string) error {
 		return fmt.Errorf("space not found")
 	}
 
-	// Remove the space
 	s.Spaces = append(s.Spaces[:idx], s.Spaces[idx+1:]...)
 
-	// If we deleted the active space, switch to another one
 	if s.ActiveSpaceID == spaceID {
 		if idx > 0 {
-			// Switch to the previous tab
 			s.ActiveSpaceID = s.Spaces[idx-1].ID
 		} else {
-			// Switch to the first tab
 			s.ActiveSpaceID = s.Spaces[0].ID
 		}
 	}
 
+	_ = sm.Save(s)
 	return nil
 }
 
-// ValidateSpace checks if the RootPath and Selections still exist.
+// ValidateSpace checks if the RootPath exists and cleans selections.
 func (sm *SessionManager) ValidateSpace(space *DirectorySpace) []string {
 	var warnings []string
 
 	// 1. Validate Root
 	if _, err := os.Stat(space.RootPath); os.IsNotExist(err) {
-		return []string{fmt.Sprintf("CRITICAL: Root path missing: %s", space.RootPath)}
+		warnings = append(warnings, fmt.Sprintf("CRITICAL: Root path missing: %s", space.RootPath))
 	}
 
-	// 2. Validate Selections (prune missing ones)
+	// 2. Validate & Clean Selections
 	var validSelections []string
+	seen := make(map[string]bool)
+
 	for _, sel := range space.Config.ManualSelections {
-		if _, err := os.Stat(sel); err == nil {
-			validSelections = append(validSelections, sel)
-		} else {
-			warnings = append(warnings, fmt.Sprintf("Removed missing selection: %s", filepath.Base(sel)))
+		if sel == "" {
+			continue
 		}
+		if seen[sel] {
+			continue
+		}
+		validSelections = append(validSelections, sel)
+		seen[sel] = true
 	}
 
 	space.Config.ManualSelections = validSelections
 	return warnings
 }
 
-// GetActiveSpace returns the currently selected workspace.
 func (s *Session) GetActiveSpace() *DirectorySpace {
 	if len(s.Spaces) == 0 {
 		return nil
@@ -179,8 +196,10 @@ func (s *Session) GetActiveSpace() *DirectorySpace {
 	return s.Spaces[0]
 }
 
-func generateID(path string) string {
-	h := sha256.New()
-	h.Write([]byte(path))
-	return hex.EncodeToString(h.Sum(nil))[:12]
+func generateRandomID() string {
+	bytes := make([]byte, 6)
+	if _, err := rand.Read(bytes); err != nil {
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(bytes)
 }

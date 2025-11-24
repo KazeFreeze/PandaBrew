@@ -29,14 +29,20 @@ type ExtractionConfig struct {
 	ExcludePatterns  []string `json:"exclude_patterns"`
 	ManualSelections []string `json:"manual_selections"`
 
+	// AlwaysShowStructure contains paths (directories) whose immediate children
+	// should be listed in the structure view regardless of exclusion status.
+	// This is the data payload derived from the TUI state.
+	AlwaysShowStructure []string `json:"always_show_structure"`
+
 	// Options
 	IncludeMode   bool `json:"include_mode"`
 	FilenamesOnly bool `json:"filenames_only"`
 	MinifyContent bool `json:"minify_content"`
 
 	// Visibility Options
-	ShowExcluded bool `json:"show_excluded"` // Show EVERYTHING (even node_modules)
-	ShowContext  bool `json:"show_context"`  // Show SIBLINGS of selected items
+	ShowExcluded  bool `json:"show_excluded"`  // Show EVERYTHING
+	ShowContext   bool `json:"show_context"`   // Show SIBLINGS of selected items
+	StructureView bool `json:"structure_view"` // Toggle: If true, expanded TUI folders are added to AlwaysShowStructure
 }
 
 // ReportMetadata holds data for the final report header.

@@ -21,6 +21,23 @@ func calculateDepth(node *TreeNode, rootPath string) int {
 	return depth
 }
 
+// CollectExpandedPaths traverses the visual tree and returns a list of all
+// paths that are currently expanded (open) in the TUI.
+func CollectExpandedPaths(node *TreeNode) []string {
+	var paths []string
+	if node == nil {
+		return paths
+	}
+
+	if node.IsDir && node.Expanded {
+		paths = append(paths, node.FullPath)
+		for _, child := range node.Children {
+			paths = append(paths, CollectExpandedPaths(child)...)
+		}
+	}
+	return paths
+}
+
 func getFileIcon(node *TreeNode) string {
 	if node.IsDir {
 		if node.Expanded {
@@ -145,6 +162,10 @@ func getSelectionIcon(node *TreeNode, space *core.DirectorySpace) (string, lipgl
 }
 
 func toggleSelection(space *core.DirectorySpace, path string) {
+	if path == "" {
+		return
+	}
+
 	found := false
 	for i, existing := range space.Config.ManualSelections {
 		if existing == path {
@@ -208,9 +229,13 @@ func enhancedCheckbox(label string, checked bool, hotkey string) string {
 	return style.Render(labelWithKey)
 }
 
+// populateChildren updates the children of a node based on filesystem scan.
+// It preserves the 'Expanded' state and 'Children' (grandchildren) of existing nodes.
 func (m *AppModel) populateChildren(state *TabState, parentPath string, entries []core.DirEntry) {
 	var targetNode *TreeNode
 	var find func(*TreeNode) *TreeNode
+
+	// Recursive finder
 	find = func(n *TreeNode) *TreeNode {
 		if n.FullPath == parentPath {
 			return n
@@ -222,6 +247,7 @@ func (m *AppModel) populateChildren(state *TabState, parentPath string, entries 
 		}
 		return nil
 	}
+
 	if state.TreeRoot != nil {
 		targetNode = find(state.TreeRoot)
 	}
@@ -229,14 +255,36 @@ func (m *AppModel) populateChildren(state *TabState, parentPath string, entries 
 		return
 	}
 
+	// 1. Snapshot existing state to preserve expansions
+	existingState := make(map[string]*TreeNode)
+	for _, child := range targetNode.Children {
+		existingState[child.FullPath] = child
+	}
+
+	// 2. Build new children list merging old state
 	var children []*TreeNode
 	for _, e := range entries {
-		children = append(children, &TreeNode{
+		newNode := &TreeNode{
 			Name:     e.Name,
 			FullPath: e.FullPath,
 			IsDir:    e.IsDir,
 			Parent:   targetNode,
-		})
+		}
+
+		if old, ok := existingState[e.FullPath]; ok {
+			newNode.Expanded = old.Expanded
+			// If it was expanded, it likely had children loaded. Preserve them.
+			// Ideally, we might want to refresh them too if this was a recursive refresh,
+			// but for a single level scan, we keep what we had unless specifically refreshed.
+			newNode.Children = old.Children
+
+			// Fix parent pointers for adopted grandchildren
+			for _, gc := range newNode.Children {
+				gc.Parent = newNode
+			}
+		}
+
+		children = append(children, newNode)
 	}
 	targetNode.Children = children
 }

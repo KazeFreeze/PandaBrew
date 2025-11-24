@@ -88,6 +88,7 @@ func (m AppModel) renderSidebar(state *TabState, space *core.DirectorySpace) str
 		enhancedCheckbox("Include Mode", space.Config.IncludeMode, "i"),
 		enhancedCheckbox("Show Context", space.Config.ShowContext, "c"),
 		enhancedCheckbox("Show Excluded", space.Config.ShowExcluded, "x"),
+		enhancedCheckbox("Struct in View", space.Config.StructureView, "v"),
 		"",
 		"",
 		lipgloss.NewStyle().

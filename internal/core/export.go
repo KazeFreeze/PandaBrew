@@ -98,6 +98,12 @@ func walkAndProcess(root string, cfg ExtractionConfig, w io.Writer, structOnly b
 		selectionMap[p] = true
 	}
 
+	// Map for expanded folders (Always Show Structure)
+	expandedMap := make(map[string]bool, len(cfg.AlwaysShowStructure))
+	for _, p := range cfg.AlwaysShowStructure {
+		expandedMap[p] = true
+	}
+
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -116,63 +122,90 @@ func walkAndProcess(root string, cfg ExtractionConfig, w io.Writer, structOnly b
 			return nil
 		}
 
+		// Check exclusion early, BUT we must respect AlwaysShowStructure
+		// If the parent is expanded, we show it in structure even if it matches exclude pattern (optionally)
+		// For now, we stick to strict exclude unless ShowExcluded is on.
 		if isExcluded(relPath, cfg.ExcludePatterns) {
-			if d.IsDir() {
-				return filepath.SkipDir
+			if cfg.ShowExcluded && structOnly {
+				// Continue to print, but mark as excluded
+			} else {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
 			}
-			return nil
 		}
 
-		// Selection Logic
+		// 1. Content Selection Logic (Manual + Include/Exclude Mode)
 		isSelected := isPathSelected(path, root, selectionMap)
-		shouldKeep := false
+		shouldKeepContent := false
 		if cfg.IncludeMode {
-			shouldKeep = isSelected
+			shouldKeepContent = isSelected
 		} else {
-			shouldKeep = !isSelected
+			shouldKeepContent = !isSelected
 		}
 
+		// 2. Context Logic
 		isContext := false
-		if !shouldKeep && cfg.ShowContext {
+		if !shouldKeepContent && cfg.ShowContext {
 			parent := filepath.Dir(path)
 			if isRelevantDirectory(parent, root, selectionMap) {
 				isContext = true
 			}
 		}
 
-		if !shouldKeep && !isContext {
-			if cfg.IncludeMode && d.IsDir() {
-				if !isRelevantDirectory(path, root, selectionMap) {
-					return filepath.SkipDir
-				}
-			}
-			if structOnly && cfg.ShowExcluded {
-				if err := printTreeNode(w, relPath, d.IsDir(), false); err != nil {
-					return err
-				}
-			}
-			return nil
+		// 3. Structure Visibility Logic (Expanded Folders)
+		// A file/folder is visible in structure if its parent is in the expanded list.
+		// The root's immediate children have parent == root.
+		isStructureVisible := false
+		parent := filepath.Dir(path)
+
+		// If the parent is in the list of "Always Show Structure" (Expanded folders), we show this node.
+		// FIX: Removed `|| parent == root`. The root must be explicitly passed in AlwaysShowStructure
+		// if we want its children visible in strict IncludeMode. The TUI handles this by adding the root
+		// if it's expanded.
+		if expandedMap[parent] {
+			isStructureVisible = true
 		}
 
-		if isContext {
-			if structOnly {
-				if err := printTreeNode(w, relPath, d.IsDir(), false); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
+		// If it's a directory and it IS in the expanded map, it implies it's open, so we render it.
+		// If it's a directory and NOT in the map (collapsed), we still render the directory line itself
+		// if its parent is expanded.
 
+		// --- DECISION TIME ---
+
+		// Case A: Printing Structure
 		if structOnly {
-			if err := printTreeNode(w, relPath, d.IsDir(), true); err != nil {
-				return err
+			// We print if:
+			// 1. It is selected for content
+			// 2. It is context
+			// 3. It is visible in the view (StructureVisible)
+			// 4. ShowExcluded is on (already handled partially above)
+
+			if shouldKeepContent || isContext || isStructureVisible || cfg.ShowExcluded {
+				return printTreeNode(w, relPath, d.IsDir(), shouldKeepContent)
 			}
-		} else if !d.IsDir() {
-			meta.TotalFiles++
-			if err := printFileContent(w, path, relPath); err != nil {
-				if _, writeErr := fmt.Fprintf(w, "--- file: %s ---\n[Error reading file: %v]\n---\n\n", relPath, err); writeErr != nil {
-					return writeErr
+		}
+
+		// Case B: Printing Content
+		if !structOnly && !d.IsDir() {
+			if shouldKeepContent {
+				meta.TotalFiles++
+				if err := printFileContent(w, path, relPath); err != nil {
+					if _, writeErr := fmt.Fprintf(w, "--- file: %s ---\n[Error reading file: %v]\n---\n\n", relPath, err); writeErr != nil {
+						return writeErr
+					}
 				}
+			}
+		}
+
+		// Pruning for efficiency
+		// If directory is NOT selected, NOT context, NOT expanded, and we are in IncludeMode, we can skip it.
+		// However, we must be careful: if a child IS selected deep down, isRelevantDirectory handles that.
+		if d.IsDir() {
+			// If this folder is not relevant (no selected children), and not expanded, we can skip
+			if cfg.IncludeMode && !isRelevantDirectory(path, root, selectionMap) && !expandedMap[path] {
+				return filepath.SkipDir
 			}
 		}
 

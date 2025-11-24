@@ -23,6 +23,8 @@ type keyMap struct {
 	ToggleI  key.Binding
 	ToggleC  key.Binding
 	ToggleX  key.Binding
+	ToggleV  key.Binding // Structure View
+	Refresh  key.Binding // Refresh Directory
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -34,8 +36,9 @@ func (k keyMap) FullHelp() [][]key.Binding {
 		{k.Up, k.Down, k.Left, k.Right},
 		{k.Select, k.Tab, k.NewTab, k.CloseTab},
 		{k.Save, k.Export, k.Root, k.Output},
-		{k.Include, k.Exclude, k.ToggleI, k.ToggleC},
-		{k.ToggleX, k.Help, k.Quit},
+		{k.Include, k.Exclude, k.Refresh},
+		{k.ToggleI, k.ToggleC, k.ToggleX, k.ToggleV},
+		{k.Help, k.Quit},
 	}
 }
 
@@ -50,19 +53,19 @@ var keys = keyMap{
 	),
 	Left: key.NewBinding(
 		key.WithKeys("left", "h"),
-		key.WithHelp("←/h", "collapse folder"),
+		key.WithHelp("←/h", "collapse"),
 	),
 	Right: key.NewBinding(
 		key.WithKeys("right", "l", "enter"),
-		key.WithHelp("→/l/enter", "expand folder"),
+		key.WithHelp("→/l", "expand"),
 	),
 	Select: key.NewBinding(
 		key.WithKeys(" "),
-		key.WithHelp("space", "toggle selection"),
+		key.WithHelp("space", "toggle select"),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("q", "ctrl+c"),
-		key.WithHelp("q/ctrl+c", "quit app"),
+		key.WithHelp("q", "quit"),
 	),
 	Save: key.NewBinding(
 		key.WithKeys("ctrl+s"),
@@ -70,7 +73,7 @@ var keys = keyMap{
 	),
 	Export: key.NewBinding(
 		key.WithKeys("ctrl+e"),
-		key.WithHelp("ctrl+e", "export to file"),
+		key.WithHelp("ctrl+e", "export"),
 	),
 	Help: key.NewBinding(
 		key.WithKeys("?"),
@@ -88,21 +91,25 @@ var keys = keyMap{
 		key.WithKeys("ctrl+w"),
 		key.WithHelp("ctrl+w", "close tab"),
 	),
+	Refresh: key.NewBinding(
+		key.WithKeys("ctrl+r"),
+		key.WithHelp("ctrl+r", "refresh dir"),
+	),
 	Root: key.NewBinding(
 		key.WithKeys("r"),
-		key.WithHelp("r", "edit root path"),
+		key.WithHelp("r", "edit root"),
 	),
 	Output: key.NewBinding(
 		key.WithKeys("o"),
-		key.WithHelp("o", "edit output file"),
+		key.WithHelp("o", "edit output"),
 	),
 	Include: key.NewBinding(
 		key.WithKeys("f"),
-		key.WithHelp("f", "edit include patterns"),
+		key.WithHelp("f", "incl pattern"),
 	),
 	Exclude: key.NewBinding(
 		key.WithKeys("g"),
-		key.WithHelp("g", "edit exclude patterns"),
+		key.WithHelp("g", "excl pattern"),
 	),
 	ToggleI: key.NewBinding(
 		key.WithKeys("i"),
@@ -110,10 +117,14 @@ var keys = keyMap{
 	),
 	ToggleC: key.NewBinding(
 		key.WithKeys("c"),
-		key.WithHelp("c", "toggle show context"),
+		key.WithHelp("c", "toggle context"),
 	),
 	ToggleX: key.NewBinding(
 		key.WithKeys("x"),
-		key.WithHelp("x", "toggle show excluded"),
+		key.WithHelp("x", "toggle excluded"),
+	),
+	ToggleV: key.NewBinding(
+		key.WithKeys("v"),
+		key.WithHelp("v", "toggle view structure"),
 	),
 }
