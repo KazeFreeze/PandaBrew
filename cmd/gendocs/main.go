@@ -4,25 +4,30 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
-	// Import your root command - adjust this path to match your project structure
+	// Import root command - adjust this path to match project structure
 	// "github.com/KazeFreeze/PandaBrew/cmd/pandabrew"
 )
 
 func main() {
-	// Create the root command - replace this with your actual root command
+	// Create the root command - replace this with actual root command
 	// For now, creating a placeholder structure
 	rootCmd := createRootCommand()
 
-	// Ensure directories exist
+	// Ensure directories exist and clean old generated files
 	if err := ensureDir("./docs"); err != nil {
 		log.Fatalf("Failed to create docs directory: %v", err)
 	}
 	if err := ensureDir("./manpages"); err != nil {
 		log.Fatalf("Failed to create manpages directory: %v", err)
 	}
+
+	// Clean old generated markdown files (except todo.md)
+	cleanOldDocs("./docs")
 
 	// Generate Markdown documentation
 	fmt.Println("Generating Markdown documentation...")
@@ -53,8 +58,8 @@ func main() {
 	fmt.Println("\nDocumentation generation complete!")
 }
 
-// createRootCommand creates your application's root command
-// Replace this with your actual root command import
+// createRootCommand creates application's root command
+// Replace this with actual root command import
 func createRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "pandabrew",
@@ -67,7 +72,7 @@ management and smart file filtering.`,
 		Version: "1.0.0",
 	}
 
-	// Add your subcommands here if you have any
+	// Add subcommands here if any
 	// rootCmd.AddCommand(versionCmd, extractCmd, etc.)
 
 	return rootCmd
@@ -291,4 +296,21 @@ If man pages don't work, reinstall using a package manager or check that
 // ensureDir creates a directory if it doesn't exist
 func ensureDir(path string) error {
 	return os.MkdirAll(path, 0o755)
+}
+
+// cleanOldDocs removes old generated markdown files
+func cleanOldDocs(docsDir string) {
+	files, err := os.ReadDir(docsDir)
+	if err != nil {
+		return // Directory might not exist yet
+	}
+
+	for _, file := range files {
+		// Keep todo.md and other non-generated files
+		if file.Name() == "todo.md" || !strings.HasSuffix(file.Name(), ".md") {
+			continue
+		}
+		// Remove old generated docs
+		_ = os.Remove(filepath.Join(docsDir, file.Name()))
+	}
 }

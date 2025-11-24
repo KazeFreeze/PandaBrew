@@ -57,14 +57,14 @@ archives:
     files:
       - README.md
       - LICENSE
-      - docs/**/*
+      - docs/*.md
       - src: manpages/*.gz
         dst: share/man/man1/
         strip_parent: true
-    # Default format for all platforms
+    # Default format
     formats:
       - tar.gz
-    # Override format for specific platforms
+    # Override format for Windows
     format_overrides:
       - goos: windows
         formats:
@@ -93,7 +93,7 @@ release:
     #### Linux/macOS
     ```bash
     # Download and extract
-    tar -xzf PandaBrew_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz
+    tar -xzf PandaBrew_{{ .Version }}_Linux_x86_64.tar.gz
 
     # Move to PATH
     sudo mv pandabrew /usr/local/bin/
@@ -104,18 +104,24 @@ release:
 
     # Make executable (if needed)
     sudo chmod +x /usr/local/bin/pandabrew
+
+    # Verify installation
+    pandabrew --version
+    man pandabrew
     ```
 
     #### Windows
-    Extract the ZIP file and add the directory to your PATH.
+    1. Extract the ZIP file
+    2. Add the directory to your PATH
+    3. Run `pandabrew --version`
 
     #### Package Managers
-    See [INSTALLATION.md](https://github.com/KazeFreeze/PandaBrew/blob/main/docs/INSTALLATION.md) for Homebrew and AUR installation.
+    See [INSTALLATION.md](https://github.com/KazeFreeze/PandaBrew/blob/main/docs/INSTALLATION.md) for Homebrew and AUR.
 
     ### Documentation
     - 📖 [CLI Reference](https://github.com/KazeFreeze/PandaBrew/blob/main/docs/CLI_REFERENCE.md)
     - 🚀 [Installation Guide](https://github.com/KazeFreeze/PandaBrew/blob/main/docs/INSTALLATION.md)
-    - 📚 Man pages included in archive
+    - 📚 Man pages included in archive (`share/man/man1/`)
 
   footer: |
     ---
@@ -128,7 +134,7 @@ release:
     - Man pages (Linux/macOS in `share/man/man1/`)
     - README and LICENSE
 
-# Linux packages (deb, rpm, apk) and AUR
+# Linux packages (deb, rpm, apk, archlinux)
 nfpms:
   - id: pandabrew-package
     package_name: pandabrew
@@ -149,28 +155,30 @@ nfpms:
     bindir: /usr/bin
     # Install documentation and man pages
     contents:
+      # Core files
       - src: README.md
         dst: /usr/share/doc/pandabrew/README.md
-      - src: LICENSE
-        dst: /usr/share/licenses/pandabrew/LICENSE
-      - src: docs/CLI_REFERENCE.md
-        dst: /usr/share/doc/pandabrew/CLI_REFERENCE.md
         file_info:
           mode: 0644
-      - src: docs/INSTALLATION.md
-        dst: /usr/share/doc/pandabrew/INSTALLATION.md
+      - src: LICENSE
+        dst: /usr/share/licenses/pandabrew/LICENSE
         file_info:
           mode: 0644
       - src: docs/*.md
         dst: /usr/share/doc/pandabrew/
+        file_info:
+          mode: 0644
+      # Man pages
       - src: manpages/*.gz
         dst: /usr/share/man/man1/
+        file_info:
+          mode: 0644
     # Post-install script to update man database
     scripts:
       postinstall: |
         #!/bin/sh
         if command -v mandb > /dev/null 2>&1; then
-          mandb -q
+          mandb -q 2>/dev/null || true
         fi
 
 # Homebrew tap
@@ -190,7 +198,7 @@ brews:
       bin.install "pandabrew"
       doc.install "README.md"
       doc.install "LICENSE"
-      doc.install Dir["docs/*"]
+      doc.install Dir["docs/*.md"]
       man1.install Dir["share/man/man1/*.gz"]
     test: |
       system "#{bin}/pandabrew", "--version"
@@ -198,7 +206,7 @@ brews:
       - name: go
         type: build
 
-# Snapcraft configuration
+# Snapcraft configuration (optional)
 snapcrafts:
   - id: pandabrew-snap
     name: pandabrew
@@ -219,6 +227,6 @@ snapcrafts:
           - removable-media
           - network
 
-# Announcements
+# Announcements (optional - skip for patch releases)
 announce:
-  skip: "{{gt .Patch 0}}" # Skip announcements for patch releases
+  skip: "{{gt .Patch 0}}"
