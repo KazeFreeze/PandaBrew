@@ -9,6 +9,8 @@ before:
     - go mod tidy
     - go mod verify
     - go test -v ./...
+    - go run ./cmd/gendocs
+    - bash -c 'for f in manpages/*.1; do gzip -f "$f"; done'
 
 # Build configuration
 builds:
@@ -42,7 +44,7 @@ builds:
 # Archive configuration
 archives:
   - id: pandabrew-archive
-    builds:
+    ids:
       - pandabrew
     name_template: >-
       {{ .ProjectName }}_
@@ -54,14 +56,20 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     files:
       - README.md
-      - LICENSE*
-      - docs/*
+      - LICENSE
+      - docs/**/*
+      - src: manpages/*.gz
+        dst: share/man/man1/
+        strip_parent: true
     formats:
       - tar.gz
     format_overrides:
       - goos: windows
-        formats:
-          - zip
+        format: zip
+        files:
+          - README.md
+          - LICENSE
+          - docs/**/*
 
 # Checksum configuration
 checksum:
@@ -91,6 +99,10 @@ release:
     # Move to PATH
     sudo mv pandabrew /usr/local/bin/
 
+    # Install man pages (optional)
+    sudo mkdir -p /usr/share/man/man1
+    sudo cp share/man/man1/*.gz /usr/share/man/man1/
+
     # Make executable (if needed)
     sudo chmod +x /usr/local/bin/pandabrew
     ```
@@ -98,15 +110,31 @@ release:
     #### Windows
     Extract the ZIP file and add the directory to your PATH.
 
+    #### Package Managers
+    See [INSTALLATION.md](https://github.com/KazeFreeze/PandaBrew/blob/main/docs/INSTALLATION.md) for Homebrew and AUR installation.
+
+    ### Documentation
+    - 📖 [CLI Reference](https://github.com/KazeFreeze/PandaBrew/blob/main/docs/CLI_REFERENCE.md)
+    - 🚀 [Installation Guide](https://github.com/KazeFreeze/PandaBrew/blob/main/docs/INSTALLATION.md)
+    - 📚 Man pages included in archive
+
   footer: |
     ---
 
     **Full Changelog**: https://github.com/KazeFreeze/PandaBrew/compare/{{ .PreviousTag }}...{{ .Tag }}
 
-# AUR package
+    ### What's Included
+    - Binary executable for your platform
+    - Complete documentation in `docs/` directory
+    - Man pages (Linux/macOS)
+    - README and LICENSE
+
+# Linux packages (deb, rpm, apk) and AUR
 nfpms:
-  - id: pandabrew-aur
+  - id: pandabrew-package
     package_name: pandabrew
+    ids:
+      - pandabrew
     homepage: https://github.com/KazeFreeze/PandaBrew
     description: |
       A TUI tool for selective file extraction and project documentation.
@@ -116,11 +144,92 @@ nfpms:
     vendor: Bernard Tapiru, Jr.
     formats:
       - archlinux
+      - deb
+      - rpm
+      - apk
     bindir: /usr/bin
-    builds:
-      - pandabrew
+    # Install documentation and man pages
     contents:
       - src: README.md
         dst: /usr/share/doc/pandabrew/README.md
       - src: LICENSE
         dst: /usr/share/licenses/pandabrew/LICENSE
+      - src: docs/CLI_REFERENCE.md
+        dst: /usr/share/doc/pandabrew/CLI_REFERENCE.md
+      - src: docs/INSTALLATION.md
+        dst: /usr/share/doc/pandabrew/INSTALLATION.md
+      - src: docs/*.md
+        dst: /usr/share/doc/pandabrew/
+      - src: manpages/*.gz
+        dst: /usr/share/man/man1/
+    # Post-install script to update man database
+    scripts:
+      postinstall: |
+        #!/bin/sh
+        if command -v mandb > /dev/null 2>&1; then
+          mandb -q
+        fi
+
+# Homebrew tap
+brews:
+  - name: pandabrew
+    repository:
+      owner: KazeFreeze
+      name: homebrew-tap
+      branch: main
+    ids:
+      - pandabrew
+    homepage: https://github.com/KazeFreeze/PandaBrew
+    description: "A TUI tool for selective file extraction and project documentation"
+    license: "MIT"
+    # Install binary, documentation, and man pages
+    install: |
+      bin.install "pandabrew"
+      doc.install "README.md"
+      doc.install "LICENSE"
+      doc.install Dir["docs/*"]
+      man1.install Dir["manpages/*.gz"]
+    test: |
+      system "#{bin}/pandabrew", "--version"
+    dependencies:
+      - name: go
+        type: build
+
+# Snapcraft configuration
+snapcrafts:
+  - id: pandabrew-snap
+    name: pandabrew
+    summary: Project file extraction tool with TUI
+    description: |
+      PandaBrew is a high-performance, headless-first tool to extract
+      codebases into a single text file for LLM context. Features an
+      interactive TUI with workspace management and smart file filtering.
+    grade: stable
+    confinement: strict
+    license: MIT
+    base: core22
+    apps:
+      pandabrew:
+        command: pandabrew
+        plugs:
+          - home
+          - removable-media
+          - network
+
+# Announcements
+announce:
+  skip: "{{gt .Patch 0}}"
+
+  # Discord webhook
+  # discord:
+  #   enabled: true
+  #   message_template: |
+  #     🐼☕ **PandaBrew {{ .Tag }}** is out!
+  #     {{ .ReleaseURL }}
+
+  # Twitter
+  # twitter:
+  #   enabled: true
+  #   message_template: |
+  #     🐼☕ PandaBrew {{ .Tag }} is out!
+  #     Check it out: {{ .ReleaseURL }}

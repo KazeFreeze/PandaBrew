@@ -20,3 +20,18 @@ dist/
 # go-semantic-release
 .semrel/
 .generated-go-semantic-release-changelog.md
+
+# Generated documentation (regenerated on build)
+docs/*.md
+!docs/todo.md
+manpages/
+*.1.gz
+
+# Build artifacts
+dist/
+
+# Session files
+pandabrew_session.json
+
+# GoReleaser artifacts
+.goreleaser.yaml.bak
