@@ -148,10 +148,9 @@ nfpms:
     license: MIT
     vendor: Bernard Tapiru, Jr.
     formats:
-      - archlinux
       - deb
       - rpm
-      - apk
+      - archlinux
     bindir: /usr/bin
     # Install documentation and man pages
     contents:
@@ -176,6 +175,52 @@ nfpms:
     # Post-install script - must be a file path
     scripts:
       postinstall: scripts/postinstall.sh
+
+# Homebrew tap
+brews:
+  - name: pandabrew
+    repository:
+      owner: KazeFreeze
+      name: homebrew-tap
+      branch: main
+    ids:
+      - pandabrew
+    homepage: https://github.com/KazeFreeze/PandaBrew
+    description: "A TUI tool for selective file extraction and project documentation"
+    license: "MIT"
+    # Install binary, documentation, and man pages
+    install: |
+      bin.install "pandabrew"
+      doc.install "README.md"
+      doc.install "LICENSE"
+      doc.install Dir["docs/*.md"]
+      man1.install Dir["share/man/man1/*.gz"]
+    test: |
+      system "#{bin}/pandabrew", "--version"
+    dependencies:
+      - name: go
+        type: build
+
+# Snapcraft configuration (optional)
+snapcrafts:
+  - id: pandabrew-snap
+    name: pandabrew
+    summary: Project file extraction tool with TUI
+    description: |
+      PandaBrew is a high-performance, headless-first tool to extract
+      codebases into a single text file for LLM context. Features an
+      interactive TUI with workspace management and smart file filtering.
+    grade: stable
+    confinement: strict
+    license: MIT
+    base: core22
+    apps:
+      pandabrew:
+        command: pandabrew
+        plugs:
+          - home
+          - removable-media
+          - network
 
 # Announcements (optional - skip for patch releases)
 announce:
