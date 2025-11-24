@@ -185,11 +185,10 @@ brews:
       name: homebrew-tap
       branch: main
     ids:
-      - pandabrew
+      - pandabrew-archive
     homepage: https://github.com/KazeFreeze/PandaBrew
     description: "A TUI tool for selective file extraction and project documentation"
     license: "MIT"
-    # Install binary, documentation, and man pages
     install: |
       bin.install "pandabrew"
       doc.install "README.md"
