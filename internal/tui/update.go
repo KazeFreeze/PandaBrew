@@ -133,7 +133,65 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			if state != nil {
 				m.populateChildren(state, msg.Path, msg.Entries)
+
+				// Restore state: Check if any new children should be expanded
+				var newCmds []tea.Cmd
+				var checkChildren func(node *TreeNode)
+				checkChildren = func(node *TreeNode) {
+					for _, child := range node.Children {
+						if child.IsDir && state.TargetExpandedPaths[child.FullPath] {
+							if !child.Expanded {
+								child.Expanded = true
+								newCmds = append(newCmds, loadDirectoryCmd(child.FullPath))
+							}
+							// Recurse to check grandchildren if they are already populated
+							// (though typically they wouldn't be until the load command finishes)
+							if len(child.Children) > 0 {
+								checkChildren(child)
+							}
+						}
+					}
+				}
+
+				// Find the node that was just loaded and check its children
+				var find func(n *TreeNode) *TreeNode
+				find = func(n *TreeNode) *TreeNode {
+					if n.FullPath == msg.Path {
+						return n
+					}
+					for _, c := range n.Children {
+						if res := find(c); res != nil {
+							return res
+						}
+					}
+					return nil
+				}
+				if state.TreeRoot != nil {
+					loadedNode := find(state.TreeRoot)
+					if loadedNode != nil {
+						checkChildren(loadedNode)
+					}
+				}
+				cmds = append(cmds, newCmds...)
+
 				state.rebuildVisibleList()
+
+				// Restore Cursor Position if target is set
+				if state.TargetCursorPath != "" {
+					for i, node := range state.VisibleNodes {
+						if node.FullPath == state.TargetCursorPath {
+							state.CursorIndex = i
+							// Once found, we can clear it to prevent jumping on future loads
+							// state.TargetCursorPath = "" // Optional: Keep it or clear it?
+							// Clearing it is safer so user can move freely.
+							// But if deeper items load later, we might want to jump there?
+							// Let's clear it only if we found it.
+							state.TargetCursorPath = ""
+							break
+						}
+					}
+				}
+
 				m.StatusMessage = fmt.Sprintf("Loaded %d items", len(msg.Entries))
 			}
 		}
@@ -160,6 +218,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Quit):
+			m.syncStateToSession() // Save View State
 			sm := core.NewSessionManager("")
 			_ = sm.Save(m.Session)
 			return m, tea.Quit
@@ -214,6 +273,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Tab):
 			if len(m.Session.Spaces) > 1 {
+				m.syncStateToSession() // Save View State of current tab before switch
+
 				currIdx := 0
 				for i, s := range m.Session.Spaces {
 					if s.ID == space.ID {
@@ -285,6 +346,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if state != nil && len(state.VisibleNodes) > 0 {
 				node := state.VisibleNodes[state.CursorIndex]
 				toggleSelection(space, node.FullPath)
+				// Auto-save on selection change
+				sm := core.NewSessionManager("")
+				_ = sm.Save(m.Session)
 			}
 
 		case key.Matches(msg, m.keys.Right):
@@ -319,6 +383,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, m.keys.Save):
+			m.syncStateToSession() // Save View State
 			sm := core.NewSessionManager("")
 			if err := sm.Save(m.Session); err != nil {
 				m.StatusMessage = iconSave + " Error: " + err.Error()

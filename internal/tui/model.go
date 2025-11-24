@@ -43,6 +43,10 @@ type TabState struct {
 	VisibleNodes []*TreeNode
 	CursorIndex  int
 
+	// State Restoration Targets
+	TargetExpandedPaths map[string]bool
+	TargetCursorPath    string
+
 	// Inputs
 	InputRoot    textinput.Model
 	InputOutput  textinput.Model
@@ -121,11 +125,18 @@ func newTabState(space *core.DirectorySpace) *TabState {
 	}
 
 	ts := &TabState{
-		InputRoot:    newInput("Root Directory", space.RootPath),
-		InputOutput:  newInput("Output File", space.OutputFilePath),
-		InputInclude: newInput("*.go, src/", strings.Join(space.Config.IncludePatterns, ", ")),
-		InputExclude: newInput(".git, node_modules", strings.Join(space.Config.ExcludePatterns, ", ")),
-		CursorIndex:  0,
+		InputRoot:           newInput("Root Directory", space.RootPath),
+		InputOutput:         newInput("Output File", space.OutputFilePath),
+		InputInclude:        newInput("*.go, src/", strings.Join(space.Config.IncludePatterns, ", ")),
+		InputExclude:        newInput(".git, node_modules", strings.Join(space.Config.ExcludePatterns, ", ")),
+		CursorIndex:         0,
+		TargetExpandedPaths: make(map[string]bool),
+		TargetCursorPath:    space.CursorPath,
+	}
+
+	// Populate target expanded paths
+	for _, p := range space.ExpandedPaths {
+		ts.TargetExpandedPaths[p] = true
 	}
 
 	// Initialize Tree

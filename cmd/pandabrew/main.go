@@ -14,7 +14,8 @@ import (
 )
 
 func main() {
-	root := flag.String("root", ".", "Root directory to scan")
+	// 0. Parse Flags
+	root := flag.String("root", "", "Root directory to scan (default: current directory if positional arg provided)")
 	headless := flag.Bool("headless", false, "Run in headless mode without TUI")
 	output := flag.String("output", "", "Output file for headless mode")
 	flag.Parse()
@@ -27,21 +28,52 @@ func main() {
 		session = &core.Session{Spaces: []*core.DirectorySpace{}}
 	}
 
-	// 2. Handle "pandabrew ." argument to create/update space
-	absRoot, _ := filepath.Abs(*root)
-	space, err := sm.AddSpaceFromPath(session, absRoot)
-	if err != nil {
-		fmt.Printf("Error initializing workspace: %v\n", err)
-		os.Exit(1)
+	// 2. Determine Initial Workspace
+	var targetPath string
+
+	// Priority 1: Flag
+	if *root != "" {
+		targetPath = *root
+	} else if flag.NArg() > 0 {
+		// Priority 2: Positional Argument
+		targetPath = flag.Arg(0)
 	}
 
-	// Override default output if flag provided
-	if *output != "" {
+	var space *core.DirectorySpace
+
+	if targetPath != "" {
+		// User provided a path -> Open/Add it
+		absRoot, _ := filepath.Abs(targetPath)
+		space, err = sm.AddSpaceFromPath(session, absRoot)
+		if err != nil {
+			fmt.Printf("Error initializing workspace: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		// No path provided -> Just open session
+		// If session is empty, we might want to default to current dir OR just open empty (TUI handles empty)
+		// But headless mode requires a space.
+
+		space = session.GetActiveSpace()
+		if space == nil && *headless {
+			fmt.Println("Error: Headless mode requires a root directory (via -root or argument) or an active session.")
+			os.Exit(1)
+		}
+
+		// If TUI mode and no space, we just proceed. TUI handles empty session.
+	}
+
+	// Override default output if flag provided (only if space exists)
+	if space != nil && *output != "" {
 		space.OutputFilePath = *output
 	}
 
 	// 3. Headless Mode
 	if *headless {
+		if space == nil {
+			fmt.Println("Error: Headless mode requires a root directory.")
+			os.Exit(1)
+		}
 		fmt.Printf("Starting headless extraction of %s...\n", space.RootPath)
 		meta, err := core.RunExtraction(space)
 		if err != nil {

@@ -21,6 +21,8 @@ type DirectorySpace struct {
 	RootPath       string           `json:"root_path"`
 	OutputFilePath string           `json:"output_path"`
 	Config         ExtractionConfig `json:"config"`
+	ExpandedPaths  []string         `json:"expanded_paths"`
+	CursorPath     string           `json:"cursor_path"`
 }
 
 // ExtractionConfig controls how the walker and generator behave.

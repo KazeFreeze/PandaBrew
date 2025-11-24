@@ -163,6 +163,8 @@ func (sm *SessionManager) ValidateSpace(space *DirectorySpace) []string {
 	// 1. Validate Root
 	if _, err := os.Stat(space.RootPath); os.IsNotExist(err) {
 		warnings = append(warnings, fmt.Sprintf("CRITICAL: Root path missing: %s", space.RootPath))
+		// If root is missing, we might as well clear everything else or mark it as invalid.
+		// For now, we proceed to clean up children relative to potentially broken root.
 	}
 
 	// 2. Validate & Clean Selections
@@ -173,14 +175,41 @@ func (sm *SessionManager) ValidateSpace(space *DirectorySpace) []string {
 		if sel == "" {
 			continue
 		}
+		// Dedup
 		if seen[sel] {
 			continue
 		}
+		// Check Existence
+		if _, err := os.Stat(sel); os.IsNotExist(err) {
+			continue // Skip missing files
+		}
+
 		validSelections = append(validSelections, sel)
 		seen[sel] = true
 	}
-
 	space.Config.ManualSelections = validSelections
+
+	// 3. Validate Expanded Paths
+	var validExpanded []string
+	seenExpanded := make(map[string]bool)
+	for _, p := range space.ExpandedPaths {
+		if p == "" || seenExpanded[p] {
+			continue
+		}
+		if _, err := os.Stat(p); err == nil {
+			validExpanded = append(validExpanded, p)
+			seenExpanded[p] = true
+		}
+	}
+	space.ExpandedPaths = validExpanded
+
+	// 4. Validate Cursor Path
+	if space.CursorPath != "" {
+		if _, err := os.Stat(space.CursorPath); os.IsNotExist(err) {
+			space.CursorPath = "" // Reset if missing
+		}
+	}
+
 	return warnings
 }
 

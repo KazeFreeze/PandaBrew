@@ -15,6 +15,10 @@ import (
 
 // RunExtraction executes the headless export logic for a specific space.
 func RunExtraction(space *DirectorySpace) (meta ReportMetadata, err error) {
+	// 0. Validate Space (Prune missing selections)
+	sm := NewSessionManager("")
+	sm.ValidateSpace(space)
+
 	config := space.Config
 	meta = ReportMetadata{
 		Timestamp:     time.Now(),
@@ -161,9 +165,6 @@ func walkAndProcess(root string, cfg ExtractionConfig, w io.Writer, structOnly b
 		parent := filepath.Dir(path)
 
 		// If the parent is in the list of "Always Show Structure" (Expanded folders), we show this node.
-		// FIX: Removed `|| parent == root`. The root must be explicitly passed in AlwaysShowStructure
-		// if we want its children visible in strict IncludeMode. The TUI handles this by adding the root
-		// if it's expanded.
 		if expandedMap[parent] {
 			isStructureVisible = true
 		}
