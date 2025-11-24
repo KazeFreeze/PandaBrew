@@ -44,7 +44,6 @@ archives:
   - id: pandabrew-archive
     builds:
       - pandabrew
-    rlcp: true
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -57,9 +56,12 @@ archives:
       - README.md
       - LICENSE*
       - docs/*
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
 
 # Checksum configuration
 checksum:
@@ -101,6 +103,7 @@ release:
 
     **Full Changelog**: https://github.com/KazeFreeze/PandaBrew/compare/{{ .PreviousTag }}...{{ .Tag }}
 
+# AUR package
 nfpms:
   - id: pandabrew-aur
     package_name: pandabrew
