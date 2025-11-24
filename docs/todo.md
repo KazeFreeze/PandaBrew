@@ -7,3 +7,4 @@
 - [ ] fix selected number of items bug (it's offset by +1)
 - [ ] add option to extract everything in view but only include the code of those
       checked
+- [ ] fix session file not persisting
