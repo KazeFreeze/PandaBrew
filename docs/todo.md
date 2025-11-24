@@ -4,3 +4,4 @@
 - [ ] fix opening a new tab with same directory shouldnt resolve to
       already opened directory
 - [ ] fix tab scrolling to always show keybinds and branding
+- [ ] fix selected number of items bug (it's offset by +1)
