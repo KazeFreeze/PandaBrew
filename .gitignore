@@ -35,4 +35,3 @@ pandabrew_session.json
 
 # GoReleaser artifacts
 .goreleaser.yaml.bak
-scripts/

@@ -11,15 +11,6 @@ before:
     - go test -v ./...
     - go run ./cmd/gendocs
     - bash -c 'for f in manpages/*.1; do [ -f "$f" ] && gzip -f "$f"; done || true'
-    - mkdir -p scripts
-    - |
-      cat > scripts/postinstall.sh << 'EOF'
-      #!/bin/sh
-      if command -v mandb > /dev/null 2>&1; then
-        mandb -q 2>/dev/null || true
-      fi
-      EOF
-    - chmod +x scripts/postinstall.sh
 
 # Build configuration
 builds:
