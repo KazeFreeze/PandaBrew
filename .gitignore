@@ -13,3 +13,10 @@ bin/
 *.out
 pandabrew_export.txt
 *.json
+
+# GoReleaser
+dist/
+
+# go-semantic-release
+.semrel/
+.generated-go-semantic-release-changelog.md

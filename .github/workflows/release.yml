@@ -36,6 +36,14 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           allow-initial-development-versions: true
           force-bump-patch-version: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean up semantic-release artifacts
+        if: steps.semrel.outputs.version != ''
+        run: |
+          rm -f .generated-go-semantic-release-changelog.md
+          rm -rf .semrel/
 
       - name: Fetch tags created by semantic release
         if: steps.semrel.outputs.version != ''
