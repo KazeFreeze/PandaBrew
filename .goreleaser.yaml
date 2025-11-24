@@ -202,27 +202,6 @@ brews:
       - name: go
         type: build
 
-# Snapcraft configuration (optional)
-snapcrafts:
-  - id: pandabrew-snap
-    name: pandabrew
-    summary: Project file extraction tool with TUI
-    description: |
-      PandaBrew is a high-performance, headless-first tool to extract
-      codebases into a single text file for LLM context. Features an
-      interactive TUI with workspace management and smart file filtering.
-    grade: stable
-    confinement: strict
-    license: MIT
-    base: core22
-    apps:
-      pandabrew:
-        command: pandabrew
-        plugs:
-          - home
-          - removable-media
-          - network
-
 # Announcements (optional - skip for patch releases)
 announce:
   skip: "{{gt .Patch 0}}"
