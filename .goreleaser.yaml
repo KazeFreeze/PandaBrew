@@ -11,6 +11,15 @@ before:
     - go test -v ./...
     - go run ./cmd/gendocs
     - bash -c 'for f in manpages/*.1; do [ -f "$f" ] && gzip -f "$f"; done || true'
+    - mkdir -p scripts
+    - |
+      cat > scripts/postinstall.sh << 'EOF'
+      #!/bin/sh
+      if command -v mandb > /dev/null 2>&1; then
+        mandb -q 2>/dev/null || true
+      fi
+      EOF
+    - chmod +x scripts/postinstall.sh
 
 # Build configuration
 builds:
@@ -173,13 +182,9 @@ nfpms:
         dst: /usr/share/man/man1/
         file_info:
           mode: 0644
-    # Post-install script to update man database
+    # Post-install script - must be a file path
     scripts:
-      postinstall: |
-        #!/bin/sh
-        if command -v mandb > /dev/null 2>&1; then
-          mandb -q 2>/dev/null || true
-        fi
+      postinstall: scripts/postinstall.sh
 
 # Homebrew tap
 brews:
