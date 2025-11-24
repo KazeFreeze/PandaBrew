@@ -10,7 +10,7 @@ before:
     - go mod verify
     - go test -v ./...
     - go run ./cmd/gendocs
-    - bash -c 'for f in manpages/*.1; do gzip -f "$f"; done'
+    - bash -c 'for f in manpages/*.1; do [ -f "$f" ] && gzip -f "$f"; done || true'
 
 # Build configuration
 builds:
@@ -61,15 +61,14 @@ archives:
       - src: manpages/*.gz
         dst: share/man/man1/
         strip_parent: true
+    # Default format for all platforms
     formats:
       - tar.gz
+    # Override format for specific platforms
     format_overrides:
       - goos: windows
-        format: zip
-        files:
-          - README.md
-          - LICENSE
-          - docs/**/*
+        formats:
+          - zip
 
 # Checksum configuration
 checksum:
@@ -126,7 +125,7 @@ release:
     ### What's Included
     - Binary executable for your platform
     - Complete documentation in `docs/` directory
-    - Man pages (Linux/macOS)
+    - Man pages (Linux/macOS in `share/man/man1/`)
     - README and LICENSE
 
 # Linux packages (deb, rpm, apk) and AUR
@@ -156,8 +155,12 @@ nfpms:
         dst: /usr/share/licenses/pandabrew/LICENSE
       - src: docs/CLI_REFERENCE.md
         dst: /usr/share/doc/pandabrew/CLI_REFERENCE.md
+        file_info:
+          mode: 0644
       - src: docs/INSTALLATION.md
         dst: /usr/share/doc/pandabrew/INSTALLATION.md
+        file_info:
+          mode: 0644
       - src: docs/*.md
         dst: /usr/share/doc/pandabrew/
       - src: manpages/*.gz
@@ -188,7 +191,7 @@ brews:
       doc.install "README.md"
       doc.install "LICENSE"
       doc.install Dir["docs/*"]
-      man1.install Dir["manpages/*.gz"]
+      man1.install Dir["share/man/man1/*.gz"]
     test: |
       system "#{bin}/pandabrew", "--version"
     dependencies:
@@ -218,18 +221,4 @@ snapcrafts:
 
 # Announcements
 announce:
-  skip: "{{gt .Patch 0}}"
-
-  # Discord webhook
-  # discord:
-  #   enabled: true
-  #   message_template: |
-  #     🐼☕ **PandaBrew {{ .Tag }}** is out!
-  #     {{ .ReleaseURL }}
-
-  # Twitter
-  # twitter:
-  #   enabled: true
-  #   message_template: |
-  #     🐼☕ PandaBrew {{ .Tag }} is out!
-  #     Check it out: {{ .ReleaseURL }}
+  skip: "{{gt .Patch 0}}" # Skip announcements for patch releases
