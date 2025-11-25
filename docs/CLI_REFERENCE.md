@@ -16,11 +16,9 @@ pandabrew --headless --root ./my-project --output context.txt
 
 These options are available for all commands:
 
-- `--root <path>` - Set the project root directory (default: current directory)
-- `--output <path>` - Set the output file path (default: project_extraction.txt)
-- `--headless` - Run in headless mode without TUI
-- `--help` - Display help information
-- `--version` - Display version information
+- `--headless` - Run in headless mode without TUI (default: false)
+- `--output` <string> - Output file path (default: "project_extraction.txt")
+- `--root` <string> - Project root directory (default: ".")
 
 ## Interactive TUI Mode
 
@@ -203,7 +201,7 @@ pandabrew
 ```
 
 ### Large Projects Performance
-For very large projects (10,000+ files):
+For very large projects (10,00_0+ files):
 - Use filtering to narrow scope
 - Consider processing subdirectories separately
 - Use headless mode for automated tasks

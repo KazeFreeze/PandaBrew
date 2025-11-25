@@ -5,10 +5,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
+	"github.com/spf13/pflag"
 )
 
 func main() {
@@ -28,7 +30,7 @@ func main() {
 
 	// Generate additional documentation FIRST (before cobra docs)
 	fmt.Println("Generating additional documentation...")
-	if err := generateAdditionalDocs(); err != nil {
+	if err := generateAdditionalDocs(rootCmd); err != nil {
 		log.Fatalf("Failed to generate additional docs: %v", err)
 	}
 	fmt.Println("✓ Additional documentation generated")
@@ -85,9 +87,11 @@ management and smart file filtering.`,
 }
 
 // generateAdditionalDocs creates supplementary documentation
-func generateAdditionalDocs() error {
-	// Generate CLI reference
-	cliRef := `# PandaBrew CLI Reference
+func generateAdditionalDocs(rootCmd *cobra.Command) error {
+	var cliRef strings.Builder
+
+	// --- Header ---
+	cliRef.WriteString(`# PandaBrew CLI Reference
 
 This document provides a complete reference for all PandaBrew commands and options.
 
@@ -104,14 +108,46 @@ pandabrew --headless --root ./my-project --output context.txt
 ## Global Options
 
 These options are available for all commands:
+`)
 
-- ` + "`--root <path>`" + ` - Set the project root directory (default: current directory)
-- ` + "`--output <path>`" + ` - Set the output file path (default: project_extraction.txt)
-- ` + "`--headless`" + ` - Run in headless mode without TUI
-- ` + "`--help`" + ` - Display help information
-- ` + "`--version`" + ` - Display version information
+	// --- Dynamic Global Options ---
+	flagSet := rootCmd.PersistentFlags()
+	var flags []*pflag.Flag
+	flagSet.VisitAll(func(flag *pflag.Flag) {
+		if !flag.Hidden {
+			flags = append(flags, flag)
+		}
+	})
 
-## Interactive TUI Mode
+	// Sort flags alphabetically
+	sort.Slice(flags, func(i, j int) bool {
+		return flags[i].Name < flags[j].Name
+	})
+
+	for _, flag := range flags {
+		var usage string
+		if flag.Shorthand != "" {
+			usage = fmt.Sprintf("`--%s, -%s`", flag.Name, flag.Shorthand)
+		} else {
+			usage = fmt.Sprintf("`--%s`", flag.Name)
+		}
+
+		// Add type information for non-boolean flags
+		if flag.Value.Type() != "bool" {
+			usage += " <" + flag.Value.Type() + ">"
+		}
+
+		cliRef.WriteString(fmt.Sprintf("\n- %s - %s", usage, flag.Usage))
+		if flag.DefValue != "" {
+			if flag.Value.Type() == "string" {
+				cliRef.WriteString(fmt.Sprintf(` (default: "%s")`, flag.DefValue))
+			} else {
+				cliRef.WriteString(fmt.Sprintf(` (default: %s)`, flag.DefValue))
+			}
+		}
+	}
+
+	cliRef.WriteString("\n\n" + `## Interactive TUI Mode
 
 The default mode provides a full-featured terminal UI with:
 
@@ -292,7 +328,7 @@ pandabrew
 ` + "```" + `
 
 ### Large Projects Performance
-For very large projects (10,000+ files):
+For very large projects (10,00_0+ files):
 - Use filtering to narrow scope
 - Consider processing subdirectories separately
 - Use headless mode for automated tasks
@@ -334,9 +370,9 @@ context:
 	pandabrew --headless --root . --output docs/codebase.txt
 	@echo "Codebase context updated"
 ` + "```" + `
-`
+`)
 
-	if err := os.WriteFile("./docs/CLI_REFERENCE.md", []byte(cliRef), 0o644); err != nil {
+	if err := os.WriteFile("./docs/CLI_REFERENCE.md", []byte(cliRef.String()), 0o644); err != nil {
 		return fmt.Errorf("failed to write CLI reference: %w", err)
 	}
 

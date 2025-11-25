@@ -6,3 +6,4 @@
       checked
 - [ ] add option to extract dir structure only even in include mode
       but take note of redundant and conflicting settings
+- [ ] fix reload should also resync all UIs
