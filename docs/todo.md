@@ -18,3 +18,5 @@
 - [ ] add search function to scan those in view
 - [ ] add grep function to look for files not in view
 - [ ] modify workflow to not build for chores
+- [ ] add customizable markers (excluded, included, file divisions)
+- [ ] add deselect all and select all shortcut (must be efficient)

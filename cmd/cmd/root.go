@@ -98,7 +98,7 @@ management and smart file filtering.`,
 	}
 
 	rootCmd.PersistentFlags().StringVar(&root, "root", "", "Project root directory")
-	rootCmd.PersistentFlags().StringVar(&output, "output", "project_extraction.txt", "Output file path")
+	rootCmd.PersistentFlags().StringVar(&output, "output", "", "Output file path (default: parent_dir/project_name.txt)")
 	rootCmd.PersistentFlags().BoolVar(&headless, "headless", false, "Run in headless mode without TUI")
 
 	return rootCmd

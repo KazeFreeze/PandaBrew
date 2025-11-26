@@ -1,0 +1,2624 @@
+--- Project Extraction Report ---
+Timestamp: 2025-11-26T23:56:41+08:00
+Selection Mode: INCLUDE checked items
+---
+
+### Project Structure
+
+pandabrew
+│   ├── cmd/
+│   │   ├── root.go
+│   ├── pandabrew/
+│   │   ├── main.go
+│   ├── core/
+│   │   ├── core_test.go
+│   │   ├── export.go
+│   │   ├── fs.go
+│   │   ├── models.go
+│   │   ├── session.go
+│   ├── tui/
+│   │   ├── keymap.go
+│   │   ├── messages.go
+│   │   ├── model.go
+│   │   ├── styles.go
+│   │   ├── sync.go
+│   │   ├── update.go
+│   │   ├── utils.go
+│   │   ├── view.go
+
+### File Contents
+
+--- file: cmd/cmd/root.go ---
+// Package cmd contains the shared Cobra command definition for the application.
+package cmd
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"pandabrew/internal/core"
+	"pandabrew/internal/tui"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spf13/cobra"
+)
+
+// NewRootCmd creates and returns the root command for the application.
+func NewRootCmd(version string) *cobra.Command {
+	var root string
+	var headless bool
+	var output string
+
+	rootCmd := &cobra.Command{
+		Use:   "pandabrew [path]",
+		Short: "A TUI tool for selective file extraction and project documentation",
+		Long: `PandaBrew 🐼☕
+
+A high-performance, headless-first tool to extract codebases into a single
+text file for LLM context. Features an interactive TUI with workspace
+management and smart file filtering.`,
+		Version: version, // This will enable the --version flag
+		Run: func(cmd *cobra.Command, args []string) {
+			// 1. Initialize Session Manager
+			sm := core.NewSessionManager("")
+			session, err := sm.Load()
+			if err != nil {
+				// Reset on corruption
+				session = &core.Session{Spaces: []*core.DirectorySpace{}}
+			}
+
+			// 2. Determine Initial Workspace
+			var targetPath string
+
+			// Priority 1: Flag
+			if root != "" {
+				targetPath = root
+			} else if len(args) > 0 {
+				// Priority 2: Positional Argument
+				targetPath = args[0]
+			}
+
+			var space *core.DirectorySpace
+
+			if targetPath != "" {
+				// User provided a path -> Open/Add it
+				absRoot, _ := filepath.Abs(targetPath)
+				space, err = sm.AddSpaceFromPath(session, absRoot)
+				if err != nil {
+					fmt.Printf("Error initializing workspace: %v\n", err)
+					os.Exit(1)
+				}
+			} else {
+				// No path provided -> Just open session
+				space = session.GetActiveSpace()
+				if space == nil && headless {
+					fmt.Println("Error: Headless mode requires a root directory (via --root or argument) or an active session.")
+					os.Exit(1)
+				}
+			}
+
+			// Override default output if flag provided (only if space exists)
+			if space != nil && output != "" {
+				space.OutputFilePath = output
+			}
+
+			// 3. Headless Mode
+			if headless {
+				if space == nil {
+					fmt.Println("Error: Headless mode requires a root directory.")
+					os.Exit(1)
+				}
+				fmt.Printf("Starting headless extraction of %s...\n", space.RootPath)
+				meta, err := core.RunExtraction(space)
+				if err != nil {
+					fmt.Printf("Error: %v\n", err)
+					os.Exit(1)
+				}
+				fmt.Printf("Done! Processed %d files.\n", meta.TotalFiles)
+				return
+			}
+
+			// 4. TUI Mode
+			p := tea.NewProgram(tui.InitialModel(session), tea.WithAltScreen())
+			if _, err := p.Run(); err != nil {
+				fmt.Printf("Error: %v", err)
+				os.Exit(1)
+			}
+		},
+	}
+
+	rootCmd.PersistentFlags().StringVar(&root, "root", "", "Project root directory")
+	rootCmd.PersistentFlags().StringVar(&output, "output", "project_extraction.txt", "Output file path")
+	rootCmd.PersistentFlags().BoolVar(&headless, "headless", false, "Run in headless mode without TUI")
+
+	return rootCmd
+}
+
+---
+
+--- file: cmd/pandabrew/main.go ---
+// Package main is the entry point for the PandaBrew application.
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"pandabrew/cmd/cmd"
+)
+
+// version is the application version. It is set at build time using ldflags.
+var version = "dev" // default value
+
+func main() {
+	rootCmd := cmd.NewRootCmd(version)
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}
+
+---
+
+--- file: internal/core/core_test.go ---
+package core
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func setupTestDir(t testing.TB) string {
+	t.Helper()
+	root := t.TempDir()
+
+	files := map[string]string{
+		"src/main.go":               "package main",
+		"src/utils.go":              "package main",
+		"src/data.txt":              "some data",
+		"src/lib/helper.go":         "package lib",
+		"node_modules/pkg/index.js": "console.log",
+		"README.md":                 "# Readme",
+		".env":                      "SECRET=123",
+	}
+
+	for path, content := range files {
+		fullPath := filepath.Join(root, path)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+func TestExtractionScenarios(t *testing.T) {
+	root := setupTestDir(t)
+	outputDir := t.TempDir()
+
+	tests := []struct {
+		name            string
+		config          ExtractionConfig
+		wantFiles       int
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "Include Mode - Recursive Folder",
+			config: ExtractionConfig{
+				IncludeMode: true,
+				ManualSelections: []string{
+					filepath.Join(root, "src"),
+				},
+			},
+			wantFiles:       4, // main.go, utils.go, data.txt, lib/helper.go
+			wantContains:    []string{"src/main.go", "src/utils.go"},
+			wantNotContains: []string{"README.md", "node_modules"},
+		},
+		{
+			name: "Include Mode - Single File",
+			config: ExtractionConfig{
+				IncludeMode: true,
+				ManualSelections: []string{
+					filepath.Join(root, "README.md"),
+				},
+			},
+			wantFiles:       1,
+			wantContains:    []string{"README.md"},
+			wantNotContains: []string{"src/main.go"},
+		},
+		{
+			name: "View Structure Mode - Expanded Folders",
+			config: ExtractionConfig{
+				IncludeMode: true,
+				ManualSelections: []string{
+					filepath.Join(root, "src", "main.go"), // Only Content for main.go
+				},
+				AlwaysShowStructure: []string{
+					root,
+					filepath.Join(root, "src"), // src is expanded
+					// src/lib is NOT expanded
+				},
+			},
+			wantFiles: 1, // Only content for src/main.go
+			wantContains: []string{
+				"src/main.go",
+				// Adjusted expectations: The structure tree prints indented names, not full paths.
+				// utils.go is a sibling of main.go, inside src/. src/ is expanded.
+				"utils.go [EXCLUDED]",
+				// lib/ is a child of src/. src/ is expanded.
+				"lib/ [EXCLUDED]",
+			},
+			wantNotContains: []string{
+				"src/lib/helper.go", // Child of collapsed folder, should NOT be visible
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			space := &DirectorySpace{
+				ID:             "test-space",
+				RootPath:       root,
+				OutputFilePath: filepath.Join(outputDir, "output_"+strings.ReplaceAll(tt.name, " ", "_")+".txt"),
+				Config:         tt.config,
+			}
+
+			meta, err := RunExtraction(space)
+			if err != nil {
+				t.Fatalf("Extraction failed: %v", err)
+			}
+
+			if !tt.config.FilenamesOnly && meta.TotalFiles != tt.wantFiles {
+				t.Errorf("File count: got %d, want %d", meta.TotalFiles, tt.wantFiles)
+			}
+
+			content, _ := os.ReadFile(space.OutputFilePath)
+			strContent := string(content)
+
+			for _, s := range tt.wantContains {
+				s = filepath.ToSlash(s)
+				if !strings.Contains(strContent, s) {
+					t.Errorf("Missing expected string: %s", s)
+				}
+			}
+
+			for _, s := range tt.wantNotContains {
+				s = filepath.ToSlash(s)
+				if strings.Contains(strContent, s) {
+					t.Errorf("Unexpected string found: %s", s)
+				}
+			}
+		})
+	}
+}
+
+func TestSessionManager(t *testing.T) {
+	tmpDir := t.TempDir()
+	sm := NewSessionManager(filepath.Join(tmpDir, "session.json"))
+
+	session, err := sm.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	root := setupTestDir(t)
+	space, err := sm.AddSpaceFromPath(session, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if session.ActiveSpaceID != space.ID {
+		t.Error("Active space not updated")
+	}
+
+	if err := sm.Save(session); err != nil {
+		t.Fatal(err)
+	}
+
+	session2, _ := sm.Load()
+	if len(session2.Spaces) != 1 {
+		t.Error("Session persistence failed")
+	}
+}
+
+---
+
+--- file: internal/core/export.go ---
+// Package core implements the report generation logic.
+package core
+
+import (
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/bmatcuk/doublestar/v4"
+)
+
+// RunExtraction executes the headless export logic for a specific space.
+func RunExtraction(space *DirectorySpace) (meta ReportMetadata, err error) {
+	// 0. Validate Space (Prune missing selections)
+	sm := NewSessionManager("")
+	sm.ValidateSpace(space)
+
+	config := space.Config
+	meta = ReportMetadata{
+		Timestamp:     time.Now(),
+		SelectionMode: "INCLUDE checked items",
+	}
+	if !config.IncludeMode {
+		meta.SelectionMode = "EXCLUDE checked items"
+	}
+
+	if err := os.MkdirAll(filepath.Dir(space.OutputFilePath), 0o755); err != nil {
+		return meta, fmt.Errorf("failed to create output dir: %w", err)
+	}
+
+	outFile, err := os.Create(space.OutputFilePath)
+	if err != nil {
+		return meta, fmt.Errorf("failed to create output file: %w", err)
+	}
+
+	// We wrap the file writer to count bytes automatically
+	countingWriter := &TokenCountingWriter{Writer: outFile}
+
+	defer func() {
+		if closeErr := outFile.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+
+	if err := writeHeader(countingWriter, meta); err != nil {
+		return meta, err
+	}
+
+	absOutPath, _ := filepath.Abs(space.OutputFilePath)
+
+	if _, err := fmt.Fprintln(countingWriter, "### Project Structure"); err != nil {
+		return meta, err
+	}
+	if _, err := fmt.Fprintln(countingWriter); err != nil {
+		return meta, err
+	}
+
+	if err := walkAndProcess(space.RootPath, config, countingWriter, true, &meta, absOutPath); err != nil {
+		return meta, err
+	}
+	if _, err := fmt.Fprintln(countingWriter); err != nil {
+		return meta, err
+	}
+
+	if !config.FilenamesOnly {
+		if _, err := fmt.Fprintln(countingWriter, "### File Contents"); err != nil {
+			return meta, err
+		}
+		if _, err := fmt.Fprintln(countingWriter); err != nil {
+			return meta, err
+		}
+		if err := walkAndProcess(space.RootPath, config, countingWriter, false, &meta, absOutPath); err != nil {
+			return meta, err
+		}
+	}
+
+	// Finalize token count from our tracking writer
+	meta.TotalTokens = countingWriter.EstimatedTokens
+	return meta, nil
+}
+
+// TokenCountingWriter is a wrapper that estimates tokens (chars / 4)
+type TokenCountingWriter struct {
+	Writer          io.Writer
+	EstimatedTokens int
+}
+
+func (w *TokenCountingWriter) Write(p []byte) (n int, err error) {
+	n, err = w.Writer.Write(p)
+	// Standard heuristic: ~4 characters per token
+	w.EstimatedTokens += n / 4
+	return n, err
+}
+
+func walkAndProcess(root string, cfg ExtractionConfig, w io.Writer, structOnly bool, meta *ReportMetadata, absOutPath string) error {
+	selectionMap := make(map[string]bool, len(cfg.ManualSelections))
+	for _, p := range cfg.ManualSelections {
+		selectionMap[p] = true
+	}
+
+	// Map for expanded folders (Always Show Structure)
+	expandedMap := make(map[string]bool, len(cfg.AlwaysShowStructure))
+	for _, p := range cfg.AlwaysShowStructure {
+		expandedMap[p] = true
+	}
+
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if path == absOutPath {
+			return nil
+		}
+
+		relPath, _ := filepath.Rel(root, path)
+		if relPath == "." {
+			if structOnly {
+				if _, err := fmt.Fprintln(w, filepath.Base(root)); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
+		// Check exclusion early, BUT we must respect AlwaysShowStructure
+		// If the parent is expanded, we show it in structure even if it matches exclude pattern (optionally)
+		// For now, we stick to strict exclude unless ShowExcluded is on.
+		if isExcluded(relPath, cfg.ExcludePatterns) {
+			if cfg.ShowExcluded && structOnly {
+				// Continue to print, but mark as excluded
+			} else {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+
+		// 1. Content Selection Logic (Manual + Include/Exclude Mode)
+		isSelected := isPathSelected(path, root, selectionMap)
+		shouldKeepContent := false
+		if cfg.IncludeMode {
+			shouldKeepContent = isSelected
+		} else {
+			shouldKeepContent = !isSelected
+		}
+
+		// 2. Context Logic
+		isContext := false
+		if !shouldKeepContent && cfg.ShowContext {
+			parent := filepath.Dir(path)
+			if isRelevantDirectory(parent, root, selectionMap) {
+				isContext = true
+			}
+		}
+
+		// 3. Structure Visibility Logic (Expanded Folders)
+		// A file/folder is visible in structure if its parent is in the expanded list.
+		// The root's immediate children have parent == root.
+		isStructureVisible := false
+		parent := filepath.Dir(path)
+
+		// If the parent is in the list of "Always Show Structure" (Expanded folders), we show this node.
+		if expandedMap[parent] {
+			isStructureVisible = true
+		}
+
+		// If it's a directory and it IS in the expanded map, it implies it's open, so we render it.
+		// If it's a directory and NOT in the map (collapsed), we still render the directory line itself
+		// if its parent is expanded.
+
+		// --- DECISION TIME ---
+
+		// Case A: Printing Structure
+		if structOnly {
+			// We print if:
+			// 1. It is selected for content
+			// 2. It is context
+			// 3. It is visible in the view (StructureVisible)
+			// 4. ShowExcluded is on (already handled partially above)
+
+			if shouldKeepContent || isContext || isStructureVisible || cfg.ShowExcluded {
+				return printTreeNode(w, relPath, d.IsDir(), shouldKeepContent)
+			}
+		}
+
+		// Case B: Printing Content
+		if !structOnly && !d.IsDir() {
+			if shouldKeepContent {
+				meta.TotalFiles++
+				if err := printFileContent(w, path, relPath); err != nil {
+					if _, writeErr := fmt.Fprintf(w, "--- file: %s ---\n[Error reading file: %v]\n---\n\n", relPath, err); writeErr != nil {
+						return writeErr
+					}
+				}
+			}
+		}
+
+		// Pruning for efficiency
+		// If directory is NOT selected, NOT context, NOT expanded, and we are in IncludeMode, we can skip it.
+		// However, we must be careful: if a child IS selected deep down, isRelevantDirectory handles that.
+		if d.IsDir() {
+			// If this folder is not relevant (no selected children), and not expanded, we can skip
+			if cfg.IncludeMode && !isRelevantDirectory(path, root, selectionMap) && !expandedMap[path] {
+				return filepath.SkipDir
+			}
+		}
+
+		return nil
+	})
+}
+
+// Helper functions (Reuse previous implementations)
+func isRelevantDirectory(currentPath, root string, selections map[string]bool) bool {
+	if isPathSelected(currentPath, root, selections) {
+		return true
+	}
+	prefix := currentPath + string(os.PathSeparator)
+	for sel := range selections {
+		if strings.HasPrefix(sel, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func isPathSelected(path, root string, selections map[string]bool) bool {
+	if selections[path] {
+		return true
+	}
+	current := filepath.Dir(path)
+	for strings.HasPrefix(current, root) {
+		if selections[current] {
+			return true
+		}
+		if current == root || current == "." || current == "/" {
+			break
+		}
+		current = filepath.Dir(current)
+	}
+	return false
+}
+
+func isExcluded(relPath string, patterns []string) bool {
+	for _, p := range patterns {
+		if matched, _ := doublestar.Match(p, relPath); matched {
+			return true
+		}
+		if strings.HasPrefix(relPath, p+"/") || relPath == p {
+			return true
+		}
+		if !strings.Contains(p, "/") {
+			if matched, _ := doublestar.Match(p, filepath.Base(relPath)); matched {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func writeHeader(w io.Writer, meta ReportMetadata) error {
+	if _, err := fmt.Fprintln(w, "--- Project Extraction Report ---"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Timestamp: %s\n", meta.Timestamp.Format(time.RFC3339)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Selection Mode: %s\n", meta.SelectionMode); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "---"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w); err != nil {
+		return err
+	}
+	return nil
+}
+
+func printTreeNode(w io.Writer, relPath string, isDir, isSelected bool) error {
+	depth := strings.Count(relPath, string(os.PathSeparator))
+	indent := strings.Repeat("│   ", depth)
+	marker := ""
+	if !isSelected {
+		marker = " [EXCLUDED]"
+	}
+	name := filepath.Base(relPath)
+	if isDir {
+		name += "/"
+	}
+	_, err := fmt.Fprintf(w, "%s├── %s%s\n", indent, name, marker)
+	return err
+}
+
+func printFileContent(w io.Writer, fullPath, relPath string) error {
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		return err
+	}
+	displayPath := filepath.ToSlash(relPath)
+	if _, err := fmt.Fprintf(w, "--- file: %s ---\n", displayPath); err != nil {
+		return err
+	}
+	if _, err := w.Write(content); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "\n---"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w); err != nil {
+		return err
+	}
+	return nil
+}
+
+---
+
+--- file: internal/core/fs.go ---
+// Package core implements the headless logic for file traversal.
+package core
+
+import (
+	"os"
+	"path/filepath"
+	"sort"
+)
+
+// ListDir returns the immediate children of a directory.
+// Used by the TUI to lazily load folder contents on expansion.
+func ListDir(path string) ([]DirEntry, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []DirEntry
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			continue // Skip inaccessible files
+		}
+		results = append(results, DirEntry{
+			Name:     e.Name(),
+			FullPath: filepath.Join(path, e.Name()),
+			IsDir:    e.IsDir(),
+			Size:     info.Size(),
+		})
+	}
+
+	// Sort: Directories first, then files. Both alphabetical.
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].IsDir != results[j].IsDir {
+			return results[i].IsDir // Dirs true > Files false
+		}
+		return results[i].Name < results[j].Name
+	})
+
+	return results, nil
+}
+
+---
+
+--- file: internal/core/models.go ---
+// Package core implements the headless logic for file traversal,
+// filtering, and report generation.
+package core
+
+import (
+	"time"
+)
+
+// Session represents the global application state.
+type Session struct {
+	ID            string            `json:"id"`
+	ActiveSpaceID string            `json:"active_space_id"`
+	Spaces        []*DirectorySpace `json:"spaces"`
+	CreatedAt     time.Time         `json:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
+}
+
+// DirectorySpace represents a single project workspace (a "Tab").
+type DirectorySpace struct {
+	ID             string           `json:"id"`
+	RootPath       string           `json:"root_path"`
+	OutputFilePath string           `json:"output_path"`
+	Config         ExtractionConfig `json:"config"`
+	ExpandedPaths  []string         `json:"expanded_paths"`
+	CursorPath     string           `json:"cursor_path"`
+}
+
+// ExtractionConfig controls how the walker and generator behave.
+type ExtractionConfig struct {
+	IncludePatterns  []string `json:"include_patterns"`
+	ExcludePatterns  []string `json:"exclude_patterns"`
+	ManualSelections []string `json:"manual_selections"`
+
+	// AlwaysShowStructure contains paths (directories) whose immediate children
+	// should be listed in the structure view regardless of exclusion status.
+	// This is the data payload derived from the TUI state.
+	AlwaysShowStructure []string `json:"always_show_structure"`
+
+	// Options
+	IncludeMode   bool `json:"include_mode"`
+	FilenamesOnly bool `json:"filenames_only"`
+	MinifyContent bool `json:"minify_content"`
+
+	// Visibility Options
+	ShowExcluded  bool `json:"show_excluded"`  // Show EVERYTHING
+	ShowContext   bool `json:"show_context"`   // Show SIBLINGS of selected items
+	StructureView bool `json:"structure_view"` // Toggle: If true, expanded TUI folders are added to AlwaysShowStructure
+}
+
+// ReportMetadata holds data for the final report header.
+type ReportMetadata struct {
+	Timestamp     time.Time
+	TotalFiles    int
+	TotalTokens   int
+	SelectionMode string
+}
+
+// DirEntry represents a single file/folder for lazy loading.
+type DirEntry struct {
+	Name     string
+	FullPath string
+	IsDir    bool
+	Size     int64
+}
+
+---
+
+--- file: internal/core/session.go ---
+// Package core handles application state persistence.
+package core
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+const (
+	// DefaultSessionFilename is just the name, path determines where it lives
+	DefaultSessionFilename = "pandabrew_session.json"
+)
+
+// SessionManager handles loading, saving, and modifying the global session.
+type SessionManager struct {
+	FilePath string
+}
+
+// NewSessionManager creates a manager pointing to the system-wide config.
+// If path is provided, it overrides the default logic.
+func NewSessionManager(path string) *SessionManager {
+	if path == "" {
+		configDir, err := os.UserConfigDir()
+		if err != nil {
+			// Fallback to local file if user config dir is unavailable
+			path = DefaultSessionFilename
+		} else {
+			// e.g. ~/.config/pandabrew/session.json
+			appDir := filepath.Join(configDir, "pandabrew")
+			// Ensure directory exists (best effort)
+			_ = os.MkdirAll(appDir, 0o755)
+			path = filepath.Join(appDir, DefaultSessionFilename)
+		}
+	}
+	return &SessionManager{FilePath: path}
+}
+
+// Load reads the session from disk. If not found, returns a fresh session.
+func (sm *SessionManager) Load() (*Session, error) {
+	data, err := os.ReadFile(sm.FilePath)
+	if os.IsNotExist(err) {
+		return &Session{
+			ID:        "default",
+			Spaces:    []*DirectorySpace{},
+			CreatedAt: time.Now(),
+		}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read session file: %w", err)
+	}
+
+	var session Session
+	if err := json.Unmarshal(data, &session); err != nil {
+		return nil, fmt.Errorf("corrupt session file: %w", err)
+	}
+
+	// Validate and clean loaded spaces
+	for _, space := range session.Spaces {
+		sm.ValidateSpace(space)
+	}
+
+	return &session, nil
+}
+
+// Save persists the session to disk.
+func (sm *SessionManager) Save(s *Session) error {
+	s.UpdatedAt = time.Now()
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(sm.FilePath, data, 0o644)
+}
+
+// AddSpaceFromPath creates a new DirectorySpace for the given path.
+func (sm *SessionManager) AddSpaceFromPath(s *Session, rawPath string) (*DirectorySpace, error) {
+	absPath, err := filepath.Abs(rawPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1. Check existence
+	info, err := os.Stat(absPath)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("directory does not exist: %s", absPath)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("path is not a directory: %s", absPath)
+	}
+
+	// 2. Create New Space (Always unique)
+	id := generateRandomID()
+
+	// 3. Create Smart Default Output Path
+	parentDir := filepath.Dir(absPath)
+	dirName := filepath.Base(absPath)
+	defaultOutput := filepath.Join(parentDir, dirName+".txt")
+
+	newSpace := &DirectorySpace{
+		ID:             id,
+		RootPath:       absPath,
+		OutputFilePath: defaultOutput,
+		Config: ExtractionConfig{
+			IncludeMode:      true,
+			IncludePatterns:  []string{},
+			ExcludePatterns:  []string{".git", "node_modules", "__pycache__", "vendor"},
+			ManualSelections: []string{},
+			StructureView:    false, // Default off
+			ShowExcluded:     false, // Default off (explicit)
+		},
+	}
+
+	s.Spaces = append(s.Spaces, newSpace)
+	s.ActiveSpaceID = newSpace.ID
+
+	// Auto-save
+	_ = sm.Save(s)
+
+	return newSpace, nil
+}
+
+// RemoveSpace removes a space by ID and adjusts the active space if needed.
+func (sm *SessionManager) RemoveSpace(s *Session, spaceID string) error {
+	if len(s.Spaces) <= 1 {
+		return fmt.Errorf("cannot close the last tab")
+	}
+
+	idx := -1
+	for i, space := range s.Spaces {
+		if space.ID == spaceID {
+			idx = i
+			break
+		}
+	}
+
+	if idx == -1 {
+		return fmt.Errorf("space not found")
+	}
+
+	s.Spaces = append(s.Spaces[:idx], s.Spaces[idx+1:]...)
+
+	if s.ActiveSpaceID == spaceID {
+		if idx > 0 {
+			s.ActiveSpaceID = s.Spaces[idx-1].ID
+		} else {
+			s.ActiveSpaceID = s.Spaces[0].ID
+		}
+	}
+
+	_ = sm.Save(s)
+	return nil
+}
+
+// ValidateSpace checks if the RootPath exists and cleans selections.
+func (sm *SessionManager) ValidateSpace(space *DirectorySpace) []string {
+	var warnings []string
+
+	// 1. Validate Root
+	if _, err := os.Stat(space.RootPath); os.IsNotExist(err) {
+		warnings = append(warnings, fmt.Sprintf("CRITICAL: Root path missing: %s", space.RootPath))
+		// If root is missing, we might as well clear everything else or mark it as invalid.
+		// For now, we proceed to clean up children relative to potentially broken root.
+	}
+
+	// 2. Validate & Clean Selections
+	var validSelections []string
+	seen := make(map[string]bool)
+
+	for _, sel := range space.Config.ManualSelections {
+		if sel == "" {
+			continue
+		}
+		// Dedup
+		if seen[sel] {
+			continue
+		}
+		// Check Existence
+		if _, err := os.Stat(sel); os.IsNotExist(err) {
+			continue // Skip missing files
+		}
+
+		validSelections = append(validSelections, sel)
+		seen[sel] = true
+	}
+	space.Config.ManualSelections = validSelections
+
+	// 3. Validate Expanded Paths
+	var validExpanded []string
+	seenExpanded := make(map[string]bool)
+	for _, p := range space.ExpandedPaths {
+		if p == "" || seenExpanded[p] {
+			continue
+		}
+		if _, err := os.Stat(p); err == nil {
+			validExpanded = append(validExpanded, p)
+			seenExpanded[p] = true
+		}
+	}
+	space.ExpandedPaths = validExpanded
+
+	// 4. Validate Cursor Path
+	if space.CursorPath != "" {
+		if _, err := os.Stat(space.CursorPath); os.IsNotExist(err) {
+			space.CursorPath = "" // Reset if missing
+		}
+	}
+
+	return warnings
+}
+
+func (s *Session) GetActiveSpace() *DirectorySpace {
+	if len(s.Spaces) == 0 {
+		return nil
+	}
+	for _, space := range s.Spaces {
+		if space.ID == s.ActiveSpaceID {
+			return space
+		}
+	}
+	return s.Spaces[0]
+}
+
+func generateRandomID() string {
+	bytes := make([]byte, 6)
+	if _, err := rand.Read(bytes); err != nil {
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(bytes)
+}
+
+---
+
+--- file: internal/tui/keymap.go ---
+package tui
+
+import "github.com/charmbracelet/bubbles/key"
+
+// --- Key Bindings ---
+type keyMap struct {
+	Up       key.Binding
+	Down     key.Binding
+	Left     key.Binding
+	Right    key.Binding
+	Select   key.Binding
+	Quit     key.Binding
+	Save     key.Binding
+	Export   key.Binding
+	Help     key.Binding
+	Tab      key.Binding
+	NewTab   key.Binding
+	CloseTab key.Binding
+	Root     key.Binding
+	Output   key.Binding
+	Include  key.Binding
+	Exclude  key.Binding
+	ToggleI  key.Binding
+	ToggleC  key.Binding
+	ToggleX  key.Binding
+	ToggleV  key.Binding // Structure View
+	Refresh  key.Binding // Refresh Directory
+}
+
+func (k keyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.Help, k.Quit}
+}
+
+func (k keyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Up, k.Down, k.Left, k.Right},
+		{k.Select, k.Tab, k.NewTab, k.CloseTab},
+		{k.Save, k.Export, k.Root, k.Output},
+		{k.Include, k.Exclude, k.Refresh},
+		{k.ToggleI, k.ToggleC, k.ToggleX, k.ToggleV},
+		{k.Help, k.Quit},
+	}
+}
+
+var keys = keyMap{
+	Up: key.NewBinding(
+		key.WithKeys("up", "k"),
+		key.WithHelp("↑/k", "move up"),
+	),
+	Down: key.NewBinding(
+		key.WithKeys("down", "j"),
+		key.WithHelp("↓/j", "move down"),
+	),
+	Left: key.NewBinding(
+		key.WithKeys("left", "h"),
+		key.WithHelp("←/h", "collapse"),
+	),
+	Right: key.NewBinding(
+		key.WithKeys("right", "l", "enter"),
+		key.WithHelp("→/l", "expand"),
+	),
+	Select: key.NewBinding(
+		key.WithKeys(" "),
+		key.WithHelp("space", "toggle select"),
+	),
+	Quit: key.NewBinding(
+		key.WithKeys("q", "ctrl+c"),
+		key.WithHelp("q", "quit"),
+	),
+	Save: key.NewBinding(
+		key.WithKeys("ctrl+s"),
+		key.WithHelp("ctrl+s", "save session"),
+	),
+	Export: key.NewBinding(
+		key.WithKeys("ctrl+e"),
+		key.WithHelp("ctrl+e", "export"),
+	),
+	Help: key.NewBinding(
+		key.WithKeys("?"),
+		key.WithHelp("?", "toggle help"),
+	),
+	Tab: key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "switch tab"),
+	),
+	NewTab: key.NewBinding(
+		key.WithKeys("ctrl+n"),
+		key.WithHelp("ctrl+n", "new tab"),
+	),
+	CloseTab: key.NewBinding(
+		key.WithKeys("ctrl+w"),
+		key.WithHelp("ctrl+w", "close tab"),
+	),
+	Refresh: key.NewBinding(
+		key.WithKeys("ctrl+r"),
+		key.WithHelp("ctrl+r", "refresh dir"),
+	),
+	Root: key.NewBinding(
+		key.WithKeys("r"),
+		key.WithHelp("r", "edit root"),
+	),
+	Output: key.NewBinding(
+		key.WithKeys("o"),
+		key.WithHelp("o", "edit output"),
+	),
+	Include: key.NewBinding(
+		key.WithKeys("f"),
+		key.WithHelp("f", "incl pattern"),
+	),
+	Exclude: key.NewBinding(
+		key.WithKeys("g"),
+		key.WithHelp("g", "excl pattern"),
+	),
+	ToggleI: key.NewBinding(
+		key.WithKeys("i"),
+		key.WithHelp("i", "toggle include mode"),
+	),
+	ToggleC: key.NewBinding(
+		key.WithKeys("c"),
+		key.WithHelp("c", "toggle context"),
+	),
+	ToggleX: key.NewBinding(
+		key.WithKeys("x"),
+		key.WithHelp("x", "toggle excluded"),
+	),
+	ToggleV: key.NewBinding(
+		key.WithKeys("v"),
+		key.WithHelp("v", "toggle view structure"),
+	),
+}
+
+---
+
+--- file: internal/tui/messages.go ---
+package tui
+
+import (
+	"os"
+	"path/filepath"
+
+	"pandabrew/internal/core"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+// --- Messages ---
+
+// DirLoadedMsg carries the result of a directory listing operation.
+type DirLoadedMsg struct {
+	Path    string
+	Entries []core.DirEntry
+	Err     error
+}
+
+func loadDirectoryCmd(path string) tea.Cmd {
+	return func() tea.Msg {
+		entries, err := core.ListDir(path)
+		return DirLoadedMsg{Path: path, Entries: entries, Err: err}
+	}
+}
+
+// ExportProgressMsg indicates progress during export.
+type ExportProgressMsg struct {
+	Processed int
+	Total     int
+}
+
+// ExportCompleteMsg carries the result of an extraction operation.
+type ExportCompleteMsg struct {
+	Count  int
+	Tokens int
+	Err    error
+}
+
+func runExportCmd(space *core.DirectorySpace) tea.Cmd {
+	return func() tea.Msg {
+		meta, err := core.RunExtraction(space)
+		return ExportCompleteMsg{
+			Count:  meta.TotalFiles,
+			Tokens: meta.TotalTokens,
+			Err:    err,
+		}
+	}
+}
+
+// NewTabValidatedMsg confirms the new tab path is valid.
+type NewTabValidatedMsg struct {
+	Path  string
+	Valid bool
+	Error string
+}
+
+func validateNewTabCmd(path string) tea.Cmd {
+	return func() tea.Msg {
+		// Expand home directory if needed
+		if len(path) > 0 && path[0] == '~' {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				path = filepath.Join(home, path[1:])
+			}
+		}
+
+		// Convert to absolute path
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return NewTabValidatedMsg{
+				Path:  path,
+				Valid: false,
+				Error: err.Error(),
+			}
+		}
+
+		// Check if directory exists
+		info, err := os.Stat(absPath)
+		if err != nil {
+			return NewTabValidatedMsg{
+				Path:  path,
+				Valid: false,
+				Error: "path does not exist",
+			}
+		}
+
+		// Check if it's a directory
+		if !info.IsDir() {
+			return NewTabValidatedMsg{
+				Path:  path,
+				Valid: false,
+				Error: "path is not a directory",
+			}
+		}
+
+		return NewTabValidatedMsg{
+			Path:  absPath,
+			Valid: true,
+		}
+	}
+}
+
+---
+
+--- file: internal/tui/model.go ---
+package tui
+
+import (
+	"path/filepath"
+	"strings"
+
+	"pandabrew/internal/core"
+
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/progress"
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+// --- Model ---
+
+// AppModel is the single source of truth for the UI state.
+type AppModel struct {
+	Session         *core.Session
+	TabStates       map[string]*TabState
+	Spinner         spinner.Model
+	Progress        progress.Model
+	Help            help.Model
+	Viewport        viewport.Model
+	Loading         bool
+	ShowHelp        bool
+	ShowNewTab      bool
+	NewTabInput     textinput.Model
+	StatusMessage   string
+	Width, Height   int
+	keys            keyMap
+	ExportProgress  float64
+	ExportTotal     int
+	ExportProcessed int
+}
+
+// TabState holds the UI state for a specific directory space (tab).
+type TabState struct {
+	TreeRoot     *TreeNode
+	VisibleNodes []*TreeNode
+	CursorIndex  int
+
+	// State Restoration Targets
+	TargetExpandedPaths map[string]bool
+	TargetCursorPath    string
+
+	// Inputs
+	InputRoot    textinput.Model
+	InputOutput  textinput.Model
+	InputInclude textinput.Model
+	InputExclude textinput.Model
+
+	ActiveInput int // 0=None, 1=Root, 2=Output, 3=Include, 4=Exclude
+}
+
+// TreeNode represents the VISUAL state of a file.
+type TreeNode struct {
+	Name     string
+	FullPath string
+	IsDir    bool
+	Expanded bool
+	Children []*TreeNode
+	Parent   *TreeNode
+	IsLast   bool // For tree rendering
+}
+
+// --- Init ---
+
+// InitialModel creates the starting state of the TUI.
+func InitialModel(session *core.Session) AppModel {
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(colorPurple)
+
+	prog := progress.New(
+		progress.WithDefaultGradient(),
+		progress.WithWidth(40),
+	)
+
+	newTabInput := textinput.New()
+	newTabInput.Placeholder = "Enter directory path..."
+	newTabInput.CharLimit = 200
+	newTabInput.Width = 60
+
+	h := help.New()
+
+	// Style for the Keys (e.g., "q", "ctrl+c") -> Purple & Bold
+	h.Styles.FullKey = lipgloss.NewStyle().Foreground(colorPurple).Bold(true)
+	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(colorPurple).Bold(true)
+
+	// Style for the Descriptions (e.g., "quit app") -> White/Plain
+	h.Styles.FullDesc = lipgloss.NewStyle().Foreground(colorLight)
+	h.Styles.ShortDesc = lipgloss.NewStyle().Foreground(colorLight)
+	// -------------------------------------
+
+	model := AppModel{
+		Session:     session,
+		TabStates:   make(map[string]*TabState),
+		Spinner:     s,
+		Progress:    prog,
+		Help:        h,
+		NewTabInput: newTabInput,
+		keys:        keys,
+	}
+
+	for _, space := range session.Spaces {
+		model.TabStates[space.ID] = newTabState(space)
+	}
+
+	return model
+}
+
+func newTabState(space *core.DirectorySpace) *TabState {
+	// Helper to create standard inputs
+	newInput := func(placeholder, value string) textinput.Model {
+		t := textinput.New()
+		t.Placeholder = placeholder
+		t.SetValue(value)
+		t.CharLimit = 150
+		t.Width = 30
+		return t
+	}
+
+	ts := &TabState{
+		InputRoot:           newInput("Root Directory", space.RootPath),
+		InputOutput:         newInput("Output File", space.OutputFilePath),
+		InputInclude:        newInput("*.go, src/", strings.Join(space.Config.IncludePatterns, ", ")),
+		InputExclude:        newInput(".git, node_modules", strings.Join(space.Config.ExcludePatterns, ", ")),
+		CursorIndex:         0,
+		TargetExpandedPaths: make(map[string]bool),
+		TargetCursorPath:    space.CursorPath,
+	}
+
+	// Populate target expanded paths
+	for _, p := range space.ExpandedPaths {
+		ts.TargetExpandedPaths[p] = true
+	}
+
+	// Initialize Tree
+	ts.TreeRoot = &TreeNode{
+		Name:     filepath.Base(space.RootPath),
+		FullPath: space.RootPath,
+		IsDir:    true,
+		Expanded: true,
+	}
+
+	ts.rebuildVisibleList()
+	return ts
+}
+
+// Init handles the initial command to run when the app starts.
+func (m AppModel) Init() tea.Cmd {
+	activeSpace := m.Session.GetActiveSpace()
+	if activeSpace != nil {
+		return tea.Batch(m.Spinner.Tick, loadDirectoryCmd(activeSpace.RootPath))
+	}
+	return m.Spinner.Tick
+}
+
+func (ts *TabState) rebuildVisibleList() {
+	ts.VisibleNodes = make([]*TreeNode, 0)
+	var walk func(*TreeNode)
+	walk = func(n *TreeNode) {
+		ts.VisibleNodes = append(ts.VisibleNodes, n)
+		if n.Expanded {
+			// Mark last child for tree rendering
+			for i, child := range n.Children {
+				child.IsLast = (i == len(n.Children)-1)
+				walk(child)
+			}
+		}
+	}
+	if ts.TreeRoot != nil {
+		walk(ts.TreeRoot)
+	}
+
+	if ts.CursorIndex >= len(ts.VisibleNodes) {
+		ts.CursorIndex = len(ts.VisibleNodes) - 1
+	}
+	if ts.CursorIndex < 0 {
+		ts.CursorIndex = 0
+	}
+}
+
+---
+
+--- file: internal/tui/styles.go ---
+// Package tui implements the terminal user interface using Bubble Tea.
+package tui
+
+import "github.com/charmbracelet/lipgloss"
+
+// --- Nerd Font Icons ---
+// Browse https://www.nerdfonts.com/cheat-sheet for more icons
+const (
+	iconFolder     = "\uf07b" // nf-fa-folder
+	iconFolderOpen = "\uf07c" // nf-fa-folder_open
+	iconFile       = "\uf016" // nf-fa-file_o
+	iconGo         = "\ue627" // nf-seti-go
+	iconMarkdown   = "\ue73e" // nf-dev-markdown
+	iconJSON       = "\ue60b" // nf-seti-json
+	iconYAML       = "\ue6a5" // nf-seti-yml
+	iconGit        = "\ue702" // nf-dev-git
+	iconDocker     = "\uf308" // nf-dev-docker
+	iconJS         = "\ue74e" // nf-seti-javascript
+	iconTS         = "\ue628" // nf-seti-typescript
+	iconPython     = "\ue73c" // nf-dev-python
+	iconRust       = "\ue7a8" // nf-dev-rust
+	iconHTML       = "\ue736" // nf-dev-html5
+	iconCSS        = "\ue749" // nf-dev-css3
+	iconImage      = "\uf1c5" // nf-fa-file_image_o
+	iconArchive    = "\uf1c6" // nf-fa-file_archive_o
+	iconConfig     = "\uf013" // nf-fa-cog
+	iconText       = "\uf0f6" // nf-fa-file_text_o
+	iconCode       = "\uf121" // nf-fa-code
+
+	iconCheckSquare = "\uf046" // nf-fa-check_square_o
+	iconSquare      = "\uf096" // nf-fa-square_o
+	iconDot         = "\uf111" // nf-fa-circle (filled)
+	iconCircle      = "\uf10c" // nf-fa-circle_o (outline)
+
+	iconKeyboard = "\uf11c" // nf-fa-keyboard_o
+	iconSave     = "\uf0c7" // nf-fa-save
+	iconExport   = "\uf019" // nf-fa-download
+	iconHelp     = "\uf059" // nf-fa-question_circle
+	iconGear     = "\uf013" // nf-fa-cog
+	iconFilter   = "\uf0b0" // nf-fa-filter
+
+	// Tree drawing characters
+	treeSpace = "  "
+)
+
+// --- Styles ---
+var (
+	// Color Palette
+	colorPurple    = lipgloss.Color("#7D56F4")
+	colorGray      = lipgloss.Color("#626262")
+	colorGrayLight = lipgloss.Color("#808080")
+	colorGrayDark  = lipgloss.Color("#404040")
+	colorLight     = lipgloss.Color("#FAFAFA")
+	colorGreen     = lipgloss.Color("#42f584")
+	colorYellow    = lipgloss.Color("#f5d442")
+	colorBlue      = lipgloss.Color("#61AFEF")
+	colorRed       = lipgloss.Color("#E06C75")
+	colorOrange    = lipgloss.Color("#FF8C00")
+	colorCyan      = lipgloss.Color("#56B6C2")
+
+	// Tab Styles
+	styleTab = lipgloss.NewStyle().
+			Padding(0, 2).
+			Foreground(colorGrayLight).
+			Background(colorGrayDark)
+
+	styleTabActive = lipgloss.NewStyle().
+			Padding(0, 2).
+			Foreground(colorLight).
+			Background(colorPurple).
+			Bold(true)
+
+	// Sidebar Styles
+	styleSidebar = lipgloss.NewStyle().
+			Width(38).
+			Padding(1, 2).
+			Border(lipgloss.RoundedBorder(), false, true, false, false).
+			BorderForeground(colorPurple)
+
+	styleSectionHeader = lipgloss.NewStyle().
+				Foreground(colorPurple).
+				Bold(true).
+				Underline(true).
+				MarginBottom(1)
+
+	styleInputLabel = lipgloss.NewStyle().
+			Foreground(colorBlue).
+			Bold(true).
+			Width(34) // Adjusted to sidebar width
+
+	// Slim Input Box (No Border)
+	styleInputBox = lipgloss.NewStyle()
+
+	// Slim Focused Input Box (Text Color Change only)
+	styleInputBoxFocused = lipgloss.NewStyle().
+				Foreground(colorPurple)
+
+	// Main Content Styles
+	styleMain = lipgloss.NewStyle().
+			Padding(1, 2).
+			MarginLeft(1)
+
+	styleCursor = lipgloss.NewStyle().
+			Foreground(colorPurple).
+			Bold(true)
+
+	// Status Bar Styles
+	styleStatusLeft = lipgloss.NewStyle().
+			Foreground(colorLight).
+			Background(colorPurple).
+			Padding(0, 2).
+			Bold(true)
+
+	styleStatusMiddle = lipgloss.NewStyle().
+				Foreground(colorLight).
+				Background(colorGrayLight).
+				Padding(0, 2)
+
+	styleStatusRight = lipgloss.NewStyle().
+				Foreground(colorGrayLight).
+				Background(colorGrayDark).
+				Padding(0, 2)
+)
+
+---
+
+--- file: internal/tui/sync.go ---
+package tui
+
+func (m AppModel) syncStateToSession() {
+	space := m.Session.GetActiveSpace()
+	if space == nil {
+		return
+	}
+	state := m.TabStates[space.ID]
+	if state == nil {
+		return
+	}
+
+	// 1. Save Expanded Paths
+	if state.TreeRoot != nil {
+		space.ExpandedPaths = CollectExpandedPaths(state.TreeRoot)
+	}
+
+	// 2. Save Cursor Path
+	if len(state.VisibleNodes) > 0 && state.CursorIndex >= 0 && state.CursorIndex < len(state.VisibleNodes) {
+		space.CursorPath = state.VisibleNodes[state.CursorIndex].FullPath
+	}
+}
+
+---
+
+--- file: internal/tui/update.go ---
+package tui
+
+import (
+	"fmt"
+	"path/filepath"
+
+	"pandabrew/internal/core"
+
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+// Update handles incoming messages and updates the model.
+func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
+
+	space := m.Session.GetActiveSpace()
+	var state *TabState
+	if space != nil {
+		state = m.TabStates[space.ID]
+	}
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.Width = msg.Width
+		m.Height = msg.Height
+		m.Help.Width = msg.Width
+
+	case NewTabValidatedMsg:
+		if msg.Valid {
+			sm := core.NewSessionManager("")
+			newSpace, err := sm.AddSpaceFromPath(m.Session, msg.Path)
+			if err == nil {
+				m.TabStates[newSpace.ID] = newTabState(newSpace)
+				m.StatusMessage = fmt.Sprintf("✓ Opened new tab: %s", filepath.Base(msg.Path))
+				m.ShowNewTab = false
+				m.NewTabInput.Blur()
+				m.NewTabInput.SetValue("")
+				cmds = append(cmds, loadDirectoryCmd(newSpace.RootPath))
+				_ = sm.Save(m.Session)
+			} else {
+				m.StatusMessage = "Error: " + err.Error()
+			}
+		} else {
+			m.StatusMessage = "Invalid path: " + msg.Error
+			m.ShowNewTab = false
+			m.NewTabInput.Blur()
+			m.NewTabInput.SetValue("")
+		}
+		return m, tea.Batch(cmds...)
+
+		// Handle New Tab Input Mode
+	}
+	if m.ShowNewTab {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "esc":
+				m.ShowNewTab = false
+				m.NewTabInput.Blur()
+				m.NewTabInput.SetValue("")
+				return m, nil
+			case "enter":
+				path := m.NewTabInput.Value()
+				if path != "" {
+					m.StatusMessage = "Validating path..."
+					return m, validateNewTabCmd(path)
+				}
+				m.ShowNewTab = false
+				m.NewTabInput.Blur()
+				return m, nil
+			}
+		}
+		m.NewTabInput, cmd = m.NewTabInput.Update(msg)
+		return m, cmd
+	}
+
+	// Handle Regular Inputs
+	if state != nil && state.ActiveInput > 0 {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "esc":
+				state.ActiveInput = 0
+				blurAll(state)
+				return m, nil
+			case "enter":
+				state.ActiveInput = 0
+				blurAll(state)
+				if state.InputRoot.Value() != space.RootPath {
+					space.RootPath = state.InputRoot.Value()
+					state.TreeRoot = &TreeNode{
+						Name:     filepath.Base(space.RootPath),
+						FullPath: space.RootPath,
+						IsDir:    true,
+						Expanded: true,
+					}
+					state.rebuildVisibleList()
+					m.Loading = true
+					cmds = append(cmds, loadDirectoryCmd(space.RootPath))
+				}
+				space.OutputFilePath = state.InputOutput.Value()
+				space.Config.IncludePatterns = splitClean(state.InputInclude.Value())
+				space.Config.ExcludePatterns = splitClean(state.InputExclude.Value())
+
+				sm := core.NewSessionManager("")
+				_ = sm.Save(m.Session)
+				return m, tea.Batch(cmds...)
+			}
+		}
+
+		switch state.ActiveInput {
+		case 1:
+			state.InputRoot, cmd = state.InputRoot.Update(msg)
+		case 2:
+			state.InputOutput, cmd = state.InputOutput.Update(msg)
+		case 3:
+			state.InputInclude, cmd = state.InputInclude.Update(msg)
+		case 4:
+			state.InputExclude, cmd = state.InputExclude.Update(msg)
+		}
+		return m, cmd
+	}
+
+	switch msg := msg.(type) {
+
+	case DirLoadedMsg:
+		m.Loading = false
+		if msg.Err != nil {
+			m.StatusMessage = "Error: " + msg.Err.Error()
+		} else {
+			if state != nil {
+				m.populateChildren(state, msg.Path, msg.Entries)
+
+				// Restore state: Check if any new children should be expanded
+				var newCmds []tea.Cmd
+				var checkChildren func(node *TreeNode)
+				checkChildren = func(node *TreeNode) {
+					for _, child := range node.Children {
+						if child.IsDir && state.TargetExpandedPaths[child.FullPath] {
+							if !child.Expanded {
+								child.Expanded = true
+								newCmds = append(newCmds, loadDirectoryCmd(child.FullPath))
+							}
+							// Recurse to check grandchildren if they are already populated
+							// (though typically they wouldn't be until the load command finishes)
+							if len(child.Children) > 0 {
+								checkChildren(child)
+							}
+						}
+					}
+				}
+
+				// Find the node that was just loaded and check its children
+				var find func(n *TreeNode) *TreeNode
+				find = func(n *TreeNode) *TreeNode {
+					if n.FullPath == msg.Path {
+						return n
+					}
+					for _, c := range n.Children {
+						if res := find(c); res != nil {
+							return res
+						}
+					}
+					return nil
+				}
+				if state.TreeRoot != nil {
+					loadedNode := find(state.TreeRoot)
+					if loadedNode != nil {
+						checkChildren(loadedNode)
+					}
+				}
+				cmds = append(cmds, newCmds...)
+
+				state.rebuildVisibleList()
+
+				// Restore Cursor Position if target is set
+				if state.TargetCursorPath != "" {
+					for i, node := range state.VisibleNodes {
+						if node.FullPath == state.TargetCursorPath {
+							state.CursorIndex = i
+							// Once found, we can clear it to prevent jumping on future loads
+							// state.TargetCursorPath = "" // Optional: Keep it or clear it?
+							// Clearing it is safer so user can move freely.
+							// But if deeper items load later, we might want to jump there?
+							// Let's clear it only if we found it.
+							state.TargetCursorPath = ""
+							break
+						}
+					}
+				}
+
+				m.StatusMessage = fmt.Sprintf("Loaded %d items", len(msg.Entries))
+			}
+		}
+
+	case ExportProgressMsg:
+		m.ExportProcessed = msg.Processed
+		m.ExportTotal = msg.Total
+		if msg.Total > 0 {
+			m.ExportProgress = float64(msg.Processed) / float64(msg.Total)
+		}
+
+	case ExportCompleteMsg:
+		m.Loading = false
+		m.ExportProgress = 0
+		m.ExportTotal = 0
+		m.ExportProcessed = 0
+		if msg.Err != nil {
+			m.StatusMessage = "Failed: " + msg.Err.Error()
+		} else {
+			m.StatusMessage = fmt.Sprintf("✓ Exported %d files (~%d tokens) to %s",
+				msg.Count, msg.Tokens, filepath.Base(space.OutputFilePath))
+		}
+
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(msg, m.keys.Quit):
+			m.syncStateToSession() // Save View State
+			sm := core.NewSessionManager("")
+			_ = sm.Save(m.Session)
+			return m, tea.Quit
+
+		case key.Matches(msg, m.keys.Help):
+			m.ShowHelp = !m.ShowHelp
+
+		case key.Matches(msg, m.keys.Refresh):
+			if state != nil && state.TreeRoot != nil {
+				// Refresh logic:
+				// 1. Always refresh root
+				// 2. Refresh all currently expanded folders
+				m.Loading = true
+				m.StatusMessage = "Refreshing view..."
+
+				// Root cmd
+				cmds = append(cmds, loadDirectoryCmd(space.RootPath))
+
+				// Recursive expanded folders cmds
+				expanded := CollectExpandedPaths(state.TreeRoot)
+				for _, p := range expanded {
+					if p != space.RootPath { // Avoid dup of root
+						cmds = append(cmds, loadDirectoryCmd(p))
+					}
+				}
+			}
+
+		case key.Matches(msg, m.keys.NewTab):
+			m.ShowNewTab = true
+			m.NewTabInput.Focus()
+			return m, textinput.Blink
+
+		case key.Matches(msg, m.keys.CloseTab):
+			if space != nil && len(m.Session.Spaces) > 1 {
+				sm := core.NewSessionManager("")
+				if err := sm.RemoveSpace(m.Session, space.ID); err != nil {
+					m.StatusMessage = "Error: " + err.Error()
+				} else {
+					delete(m.TabStates, space.ID)
+					m.StatusMessage = fmt.Sprintf("✓ Closed tab: %s", filepath.Base(space.RootPath))
+					newSpace := m.Session.GetActiveSpace()
+					if newSpace != nil {
+						newState := m.TabStates[newSpace.ID]
+						if newState != nil && len(newState.TreeRoot.Children) == 0 {
+							cmds = append(cmds, loadDirectoryCmd(newSpace.RootPath))
+						}
+					}
+				}
+			} else {
+				m.StatusMessage = "Cannot close the last tab"
+			}
+
+		case key.Matches(msg, m.keys.Tab):
+			if len(m.Session.Spaces) > 1 {
+				m.syncStateToSession() // Save View State of current tab before switch
+
+				currIdx := 0
+				for i, s := range m.Session.Spaces {
+					if s.ID == space.ID {
+						currIdx = i
+						break
+					}
+				}
+				nextIdx := (currIdx + 1) % len(m.Session.Spaces)
+				m.Session.ActiveSpaceID = m.Session.Spaces[nextIdx].ID
+				newSpace := m.Session.GetActiveSpace()
+				if newSpace != nil {
+					newState := m.TabStates[newSpace.ID]
+					if newState != nil && len(newState.TreeRoot.Children) == 0 {
+						cmds = append(cmds, loadDirectoryCmd(newSpace.RootPath))
+					}
+				}
+				sm := core.NewSessionManager("")
+				_ = sm.Save(m.Session)
+			}
+
+		case key.Matches(msg, m.keys.Root):
+			if state != nil {
+				focusInput(state, 1)
+			}
+			return m, textinput.Blink
+		case key.Matches(msg, m.keys.Output):
+			if state != nil {
+				focusInput(state, 2)
+			}
+			return m, textinput.Blink
+		case key.Matches(msg, m.keys.Include):
+			if state != nil {
+				focusInput(state, 3)
+			}
+			return m, textinput.Blink
+		case key.Matches(msg, m.keys.Exclude):
+			if state != nil {
+				focusInput(state, 4)
+			}
+			return m, textinput.Blink
+
+		case key.Matches(msg, m.keys.ToggleI):
+			if space != nil {
+				space.Config.IncludeMode = !space.Config.IncludeMode
+			}
+		case key.Matches(msg, m.keys.ToggleC):
+			if space != nil {
+				space.Config.ShowContext = !space.Config.ShowContext
+			}
+		case key.Matches(msg, m.keys.ToggleX):
+			if space != nil {
+				space.Config.ShowExcluded = !space.Config.ShowExcluded
+			}
+		case key.Matches(msg, m.keys.ToggleV):
+			if space != nil {
+				space.Config.StructureView = !space.Config.StructureView
+			}
+
+		case key.Matches(msg, m.keys.Up):
+			if state != nil && state.CursorIndex > 0 {
+				state.CursorIndex--
+			}
+		case key.Matches(msg, m.keys.Down):
+			if state != nil && state.CursorIndex < len(state.VisibleNodes)-1 {
+				state.CursorIndex++
+			}
+
+		case key.Matches(msg, m.keys.Select):
+			if state != nil && len(state.VisibleNodes) > 0 {
+				node := state.VisibleNodes[state.CursorIndex]
+				toggleSelection(space, node.FullPath)
+				// Auto-save on selection change
+				sm := core.NewSessionManager("")
+				_ = sm.Save(m.Session)
+			}
+
+		case key.Matches(msg, m.keys.Right):
+			if state != nil && len(state.VisibleNodes) > 0 {
+				node := state.VisibleNodes[state.CursorIndex]
+				if node.IsDir {
+					node.Expanded = !node.Expanded
+					if node.Expanded && len(node.Children) == 0 {
+						m.Loading = true
+						m.StatusMessage = fmt.Sprintf("Loading %s...", node.Name)
+						cmds = append(cmds, loadDirectoryCmd(node.FullPath))
+					} else {
+						state.rebuildVisibleList()
+					}
+				}
+			}
+
+		case key.Matches(msg, m.keys.Left):
+			if state != nil && len(state.VisibleNodes) > 0 {
+				node := state.VisibleNodes[state.CursorIndex]
+				if node.IsDir && node.Expanded {
+					node.Expanded = false
+					state.rebuildVisibleList()
+				} else if node.Parent != nil {
+					for i, n := range state.VisibleNodes {
+						if n == node.Parent {
+							state.CursorIndex = i
+							break
+						}
+					}
+				}
+			}
+
+		case key.Matches(msg, m.keys.Save):
+			m.syncStateToSession() // Save View State
+			sm := core.NewSessionManager("")
+			if err := sm.Save(m.Session); err != nil {
+				m.StatusMessage = iconSave + " Error: " + err.Error()
+			} else {
+				m.StatusMessage = iconSave + " Session Saved"
+			}
+
+		case key.Matches(msg, m.keys.Export):
+			if space != nil {
+				// Feature: Extract Everything in View
+				// If enabled, capture TUI state and pass to core
+				space.Config.AlwaysShowStructure = []string{} // Reset
+				if space.Config.StructureView && state != nil && state.TreeRoot != nil {
+					space.Config.AlwaysShowStructure = CollectExpandedPaths(state.TreeRoot)
+				}
+
+				m.Loading = true
+				m.ExportProgress = 0
+				m.StatusMessage = "Starting export..."
+				cmds = append(cmds, runExportCmd(space))
+			}
+		}
+	}
+
+	if m.Loading {
+		m.Spinner, cmd = m.Spinner.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
+	return m, tea.Batch(cmds...)
+}
+
+---
+
+--- file: internal/tui/utils.go ---
+package tui
+
+import (
+	"fmt"
+	"path/filepath"
+	"slices"
+	"strings"
+
+	"pandabrew/internal/core"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+func calculateDepth(node *TreeNode, rootPath string) int {
+	rootDepth := strings.Count(rootPath, string(filepath.Separator))
+	nodeDepth := strings.Count(node.FullPath, string(filepath.Separator))
+	depth := nodeDepth - rootDepth
+	if depth < 0 {
+		return 0
+	}
+	return depth
+}
+
+// CollectExpandedPaths traverses the visual tree and returns a list of all
+// paths that are currently expanded (open) in the TUI.
+func CollectExpandedPaths(node *TreeNode) []string {
+	var paths []string
+	if node == nil {
+		return paths
+	}
+
+	if node.IsDir && node.Expanded {
+		paths = append(paths, node.FullPath)
+		for _, child := range node.Children {
+			paths = append(paths, CollectExpandedPaths(child)...)
+		}
+	}
+	return paths
+}
+
+func getFileIcon(node *TreeNode) string {
+	if node.IsDir {
+		if node.Expanded {
+			return lipgloss.NewStyle().Foreground(colorYellow).Render(iconFolderOpen)
+		}
+		return lipgloss.NewStyle().Foreground(colorBlue).Render(iconFolder)
+	}
+
+	ext := strings.ToLower(filepath.Ext(node.Name))
+	name := strings.ToLower(node.Name)
+
+	// Special files
+	switch name {
+	case "dockerfile", ".dockerignore":
+		return lipgloss.NewStyle().Foreground(colorBlue).Render(iconDocker)
+	case ".gitignore", ".gitattributes":
+		return lipgloss.NewStyle().Foreground(colorOrange).Render(iconGit)
+	case "readme.md", "readme":
+		return lipgloss.NewStyle().Foreground(colorGreen).Render(iconMarkdown)
+	case "package.json", "tsconfig.json":
+		return lipgloss.NewStyle().Foreground(colorYellow).Render(iconJSON)
+	}
+
+	// By extension
+	iconStyle := lipgloss.NewStyle()
+	var icon string
+
+	switch ext {
+	case ".go":
+		icon = iconGo
+		iconStyle = iconStyle.Foreground(colorCyan)
+	case ".md", ".markdown":
+		icon = iconMarkdown
+		iconStyle = iconStyle.Foreground(colorGreen)
+	case ".json":
+		icon = iconJSON
+		iconStyle = iconStyle.Foreground(colorYellow)
+	case ".yaml", ".yml":
+		icon = iconYAML
+		iconStyle = iconStyle.Foreground(colorPurple)
+	case ".js", ".jsx":
+		icon = iconJS
+		iconStyle = iconStyle.Foreground(colorYellow)
+	case ".ts", ".tsx":
+		icon = iconTS
+		iconStyle = iconStyle.Foreground(colorBlue)
+	case ".py":
+		icon = iconPython
+		iconStyle = iconStyle.Foreground(colorBlue)
+	case ".rs":
+		icon = iconRust
+		iconStyle = iconStyle.Foreground(colorOrange)
+	case ".html", ".htm":
+		icon = iconHTML
+		iconStyle = iconStyle.Foreground(colorOrange)
+	case ".css", ".scss", ".sass":
+		icon = iconCSS
+		iconStyle = iconStyle.Foreground(colorBlue)
+	case ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp":
+		icon = iconImage
+		iconStyle = iconStyle.Foreground(colorPurple)
+	case ".zip", ".tar", ".gz", ".rar", ".7z":
+		icon = iconArchive
+		iconStyle = iconStyle.Foreground(colorRed)
+	case ".toml", ".ini", ".conf", ".config":
+		icon = iconConfig
+		iconStyle = iconStyle.Foreground(colorGray)
+	case ".txt", ".log":
+		icon = iconText
+		iconStyle = iconStyle.Foreground(colorGray)
+	default:
+		if isCodeFile(ext) {
+			icon = iconCode
+			iconStyle = iconStyle.Foreground(colorGrayLight)
+		} else {
+			icon = iconFile
+			iconStyle = iconStyle.Foreground(colorGray)
+		}
+	}
+
+	return iconStyle.Render(icon)
+}
+
+func isCodeFile(ext string) bool {
+	codeExts := []string{
+		".c", ".cpp", ".cc", ".h", ".hpp",
+		".java", ".kt", ".scala",
+		".rb", ".php", ".swift",
+		".sh", ".bash", ".zsh",
+		".vim", ".lua", ".r",
+	}
+	return slices.Contains(codeExts, ext)
+}
+
+func getSelectionIcon(node *TreeNode, space *core.DirectorySpace) (string, lipgloss.Style) {
+	style := lipgloss.NewStyle()
+
+	// 1. Exact match
+	isExact := slices.Contains(space.Config.ManualSelections, node.FullPath)
+	if isExact {
+		return iconCheckSquare, style.Foreground(colorGreen).Bold(true)
+	}
+
+	// 2. Implicit/Ancestor match (this file/folder is under a selected parent)
+	for _, s := range space.Config.ManualSelections {
+		if strings.HasPrefix(node.FullPath, s+string(filepath.Separator)) {
+			return iconDot, style.Foreground(colorGreen)
+		}
+	}
+
+	// 3. Partial/Descendant match (some children are selected)
+	if node.IsDir {
+		prefix := node.FullPath + string(filepath.Separator)
+		for _, s := range space.Config.ManualSelections {
+			if strings.HasPrefix(s, prefix) {
+				return iconCircle, style.Foreground(colorYellow)
+			}
+		}
+	}
+
+	return iconSquare, style.Foreground(colorGray)
+}
+
+func toggleSelection(space *core.DirectorySpace, path string) {
+	if path == "" {
+		return
+	}
+
+	found := false
+	for i, existing := range space.Config.ManualSelections {
+		if existing == path {
+			space.Config.ManualSelections = append(space.Config.ManualSelections[:i], space.Config.ManualSelections[i+1:]...)
+			found = true
+			break
+		}
+	}
+	if !found {
+		space.Config.ManualSelections = append(space.Config.ManualSelections, path)
+	}
+}
+
+func focusInput(state *TabState, idx int) {
+	state.ActiveInput = idx
+	blurAll(state)
+	switch idx {
+	case 1:
+		state.InputRoot.Focus()
+	case 2:
+		state.InputOutput.Focus()
+	case 3:
+		state.InputInclude.Focus()
+	case 4:
+		state.InputExclude.Focus()
+	}
+}
+
+func blurAll(state *TabState) {
+	state.InputRoot.Blur()
+	state.InputOutput.Blur()
+	state.InputInclude.Blur()
+	state.InputExclude.Blur()
+}
+
+func splitClean(s string) []string {
+	if s == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, ",")
+	var res []string
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t != "" {
+			res = append(res, t)
+		}
+	}
+	return res
+}
+
+func enhancedCheckbox(label string, checked bool, hotkey string) string {
+	icon := iconSquare
+	style := lipgloss.NewStyle().Foreground(colorGray)
+
+	if checked {
+		icon = iconCheckSquare
+		style = lipgloss.NewStyle().Foreground(colorGreen).Bold(true)
+	}
+
+	labelWithKey := fmt.Sprintf("%s %s (%s)", icon, label, hotkey)
+	return style.Render(labelWithKey)
+}
+
+// populateChildren updates the children of a node based on filesystem scan.
+// It preserves the 'Expanded' state and 'Children' (grandchildren) of existing nodes.
+func (m *AppModel) populateChildren(state *TabState, parentPath string, entries []core.DirEntry) {
+	var targetNode *TreeNode
+	var find func(*TreeNode) *TreeNode
+
+	// Recursive finder
+	find = func(n *TreeNode) *TreeNode {
+		if n.FullPath == parentPath {
+			return n
+		}
+		for _, c := range n.Children {
+			if res := find(c); res != nil {
+				return res
+			}
+		}
+		return nil
+	}
+
+	if state.TreeRoot != nil {
+		targetNode = find(state.TreeRoot)
+	}
+	if targetNode == nil {
+		return
+	}
+
+	// 1. Snapshot existing state to preserve expansions
+	existingState := make(map[string]*TreeNode)
+	for _, child := range targetNode.Children {
+		existingState[child.FullPath] = child
+	}
+
+	// 2. Build new children list merging old state
+	var children []*TreeNode
+	for _, e := range entries {
+		newNode := &TreeNode{
+			Name:     e.Name,
+			FullPath: e.FullPath,
+			IsDir:    e.IsDir,
+			Parent:   targetNode,
+		}
+
+		if old, ok := existingState[e.FullPath]; ok {
+			newNode.Expanded = old.Expanded
+			// If it was expanded, it likely had children loaded. Preserve them.
+			// Ideally, we might want to refresh them too if this was a recursive refresh,
+			// but for a single level scan, we keep what we had unless specifically refreshed.
+			newNode.Children = old.Children
+
+			// Fix parent pointers for adopted grandchildren
+			for _, gc := range newNode.Children {
+				gc.Parent = newNode
+			}
+		}
+
+		children = append(children, newNode)
+	}
+	targetNode.Children = children
+}
+
+---
+
+--- file: internal/tui/view.go ---
+package tui
+
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+
+	"pandabrew/internal/core"
+
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/lipgloss"
+)
+
+// View renders the UI.
+func (m AppModel) View() string {
+	// Show new tab overlay
+	if m.ShowNewTab {
+		return m.renderNewTabView()
+	}
+
+	// Show help overlay
+	if m.ShowHelp {
+		return m.renderHelpView()
+	}
+
+	space := m.Session.GetActiveSpace()
+	if space == nil {
+		return "No workspace open. Press ctrl+n to create a new tab."
+	}
+	state := m.TabStates[space.ID]
+
+	// 1. Tabs
+	tabs := m.renderTabs()
+
+	// 2. Sidebar
+	sidebar := m.renderSidebar(state, space)
+
+	// 3. File Tree
+	tree := m.renderTree(state, space)
+
+	// 4. Footer
+	footer := m.renderFooter(space)
+
+	// Combine
+	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, tree)
+	main := lipgloss.JoinVertical(lipgloss.Left, tabs, body, footer)
+
+	return main
+}
+
+func (m AppModel) renderTabs() string {
+	var tabs []string
+
+	branding := lipgloss.NewStyle().
+		Foreground(colorPurple).
+		Bold(true).
+		Padding(0, 2).
+		Render("ʕ•́ᴥ•̀ʔっ☕ PandaBrew")
+	tabs = append(tabs, branding)
+
+	for _, s := range m.Session.Spaces {
+		name := iconFolder + " " + filepath.Base(s.RootPath)
+		style := styleTab
+		if s.ID == m.Session.ActiveSpaceID {
+			style = styleTabActive
+		}
+		tabs = append(tabs, style.Render(name))
+	}
+	tabs = append(tabs, styleTab.Render(iconKeyboard+" [Tab] Switch • [Ctrl+N] New • [Ctrl+W] Close"))
+	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+}
+
+func (m AppModel) renderSidebar(state *TabState, space *core.DirectorySpace) string {
+	settings := lipgloss.JoinVertical(lipgloss.Left,
+		styleSectionHeader.Render(iconGear+" Configuration"),
+		"",
+		m.renderInput("Root", state.InputRoot, state.ActiveInput == 1, "r"),
+		"",
+		m.renderInput("Output", state.InputOutput, state.ActiveInput == 2, "o"),
+		"",
+		m.renderInput("Include", state.InputInclude, state.ActiveInput == 3, "f"),
+		"",
+		m.renderInput("Exclude", state.InputExclude, state.ActiveInput == 4, "g"),
+		"",
+		"",
+		styleSectionHeader.Render(iconFilter+" Options"),
+		enhancedCheckbox("Include Mode", space.Config.IncludeMode, "i"),
+		enhancedCheckbox("Show Context", space.Config.ShowContext, "c"),
+		enhancedCheckbox("Show Excluded", space.Config.ShowExcluded, "x"),
+		enhancedCheckbox("Struct in View", space.Config.StructureView, "v"),
+		"",
+		"",
+		lipgloss.NewStyle().
+			Foreground(colorGreen).
+			Bold(true).
+			Render(fmt.Sprintf("%s Selected: %d", iconCheckSquare, len(space.Config.ManualSelections))),
+	)
+
+	return styleSidebar.Height(m.Height - 7).Render(settings)
+}
+
+func (m AppModel) renderInput(label string, input textinput.Model, focused bool, hotkey string) string {
+	labelWithKey := fmt.Sprintf("%s (%s):", label, hotkey)
+	labelStyle := styleInputLabel.Render(labelWithKey)
+
+	inputView := input.View()
+	if focused {
+		inputView = styleInputBoxFocused.Render(inputView)
+	} else {
+		inputView = styleInputBox.Render(inputView)
+	}
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		labelStyle,
+		inputView,
+	)
+}
+
+func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace) string {
+	var treeRows []string
+
+	// Calculate visible window
+	maxRows := m.Height - 8
+	startRow := 0
+	if state.CursorIndex > maxRows/2 {
+		startRow = state.CursorIndex - maxRows/2
+	}
+	endRow := min(startRow+maxRows, len(state.VisibleNodes))
+
+	for i := startRow; i < endRow; i++ {
+		node := state.VisibleNodes[i]
+
+		// Calculate depth
+		depth := calculateDepth(node, space.RootPath)
+		indent := strings.Repeat(treeSpace, depth)
+
+		// Get appropriate icon
+		icon := getFileIcon(node)
+
+		// Selection indicator
+		checkIcon, checkStyle := getSelectionIcon(node, space)
+
+		// Build line
+		line := fmt.Sprintf("%s%s %s %s", indent, checkIcon, icon, node.Name)
+		line = checkStyle.Render(line)
+
+		// Cursor
+		if i == state.CursorIndex {
+			line = styleCursor.Render("▶ ") + line
+		} else {
+			line = "  " + line
+		}
+
+		treeRows = append(treeRows, line)
+	}
+
+	mainContent := lipgloss.JoinVertical(lipgloss.Left, treeRows...)
+	return styleMain.
+		Width(m.Width - 45).
+		Height(m.Height - 7).
+		Render(mainContent)
+}
+
+func (m AppModel) renderFooter(space *core.DirectorySpace) string {
+	var sections []string
+
+	// Left: Status message with spinner or progress bar
+	var leftSection string
+	if m.Loading && m.ExportTotal > 0 {
+		// Show progress bar during export
+		progressBar := m.Progress.ViewAs(m.ExportProgress)
+		leftSection = fmt.Sprintf("Exporting: %d/%d %s", m.ExportProcessed, m.ExportTotal, progressBar)
+	} else if m.Loading {
+		leftSection = fmt.Sprintf("%s %s", m.Spinner.View(), m.StatusMessage)
+	} else {
+		leftSection = m.StatusMessage
+	}
+	sections = append(sections, styleStatusLeft.Render(leftSection))
+
+	// Middle: File count
+	middleSection := fmt.Sprintf("%s %d selected", iconCheckSquare, len(space.Config.ManualSelections))
+	sections = append(sections, styleStatusMiddle.Render(middleSection))
+
+	// Right: Key hints
+	rightSection := fmt.Sprintf("%s help • %s save • %s export • q quit",
+		iconHelp, iconSave, iconExport)
+	sections = append(sections, styleStatusRight.Render(rightSection))
+
+	footer := lipgloss.JoinHorizontal(lipgloss.Top, sections...)
+	return lipgloss.NewStyle().Width(m.Width).Render(footer)
+}
+
+func (m AppModel) renderHelpView() string {
+	groups := m.keys.FullHelp()
+
+	// Calculate how many columns we can fit
+	const itemWidth = 38 // Width per help item
+
+	// Determine columns based on terminal width
+	maxCols := max(1, (m.Width-10)/itemWidth) // -10 for borders and padding
+
+	// Flatten all bindings from all groups into a single list
+	var allBindings []key.Binding
+	for _, group := range groups {
+		allBindings = append(allBindings, group...)
+	}
+
+	var rows []string
+	var rowItems []string
+
+	for _, binding := range allBindings {
+		// Render Key (Fixed Width 14 chars)
+		keyText := binding.Help().Key
+		keyStyled := lipgloss.NewStyle().
+			Foreground(colorPurple).
+			Bold(true).
+			Width(14).
+			Render(keyText)
+
+		// Render Description (Fixed Width 22 chars to prevent overflow)
+		descText := binding.Help().Desc
+		descStyled := lipgloss.NewStyle().
+			Foreground(colorLight).
+			Width(22).
+			Render(descText)
+
+		// Combine key + desc with fixed total width
+		item := lipgloss.NewStyle().
+			Width(itemWidth).
+			Render(fmt.Sprintf("%s %s", keyStyled, descStyled))
+
+		rowItems = append(rowItems, item)
+
+		// If we've reached max columns, start a new row
+		if len(rowItems) >= maxCols {
+			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, rowItems...))
+			rowItems = nil
+		}
+	}
+
+	// Add any remaining items
+	if len(rowItems) > 0 {
+		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, rowItems...))
+	}
+
+	// Join all rows vertically
+	helpBlock := lipgloss.JoinVertical(lipgloss.Left, rows...)
+
+	// Wrapper Box
+	title := lipgloss.NewStyle().Bold(true).Foreground(colorPurple).Render(iconHelp + " Keyboard Shortcuts")
+
+	// Constrain box width to terminal size
+	boxWidth := min(m.Width-4, maxCols*itemWidth+4) // +4 for padding
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPurple).
+		Padding(1, 2).
+		Width(boxWidth).
+		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", helpBlock))
+
+	closeHint := lipgloss.NewStyle().Foreground(colorGrayLight).Italic(true).Render("Press ? to close")
+
+	return lipgloss.Place(
+		m.Width, m.Height,
+		lipgloss.Center, lipgloss.Center,
+		lipgloss.JoinVertical(lipgloss.Center, box, "", closeHint),
+	)
+}
+
+func (m AppModel) renderNewTabView() string {
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(colorPurple).
+		Render(iconFolder + " Open New Tab")
+
+	description := lipgloss.NewStyle().
+		Foreground(colorGrayLight).
+		Render("Enter the full path to a directory:")
+
+	inputBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPurple).
+		Padding(0, 1).
+		Width(min(m.Width-10, 70)).
+		Render(m.NewTabInput.View())
+
+	hints := lipgloss.NewStyle().
+		Foreground(colorGrayLight).
+		Italic(true).
+		Render("Enter to confirm • Esc to cancel")
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		"",
+		description,
+		"",
+		inputBox,
+		"",
+		hints,
+	)
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPurple).
+		Padding(1, 2).
+		Render(content)
+
+	return lipgloss.Place(
+		m.Width, m.Height,
+		lipgloss.Center, lipgloss.Center,
+		box,
+	)
+}
+
+---
+
