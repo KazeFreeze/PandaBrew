@@ -7,3 +7,5 @@
 - [ ] add option to extract dir structure only even in include mode
       but take note of redundant and conflicting settings
 - [ ] fix reload should also resync all UIs
+- [ ] fix scrolling: when reaching the bottom, the cursor should no longer be
+      kept centered
