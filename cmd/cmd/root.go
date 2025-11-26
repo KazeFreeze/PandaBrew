@@ -14,7 +14,7 @@ import (
 )
 
 // NewRootCmd creates and returns the root command for the application.
-func NewRootCmd() *cobra.Command {
+func NewRootCmd(version string) *cobra.Command {
 	var root string
 	var headless bool
 	var output string
@@ -27,7 +27,7 @@ func NewRootCmd() *cobra.Command {
 A high-performance, headless-first tool to extract codebases into a single
 text file for LLM context. Features an interactive TUI with workspace
 management and smart file filtering.`,
-		Version: "1.0.0", // This will enable the --version flag
+		Version: version, // This will enable the --version flag
 		Run: func(cmd *cobra.Command, args []string) {
 			// 1. Initialize Session Manager
 			sm := core.NewSessionManager("")
