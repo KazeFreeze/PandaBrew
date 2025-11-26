@@ -201,7 +201,7 @@ pandabrew
 ```
 
 ### Large Projects Performance
-For very large projects (10,00_0+ files):
+For very large projects (10,000+ files):
 - Use filtering to narrow scope
 - Consider processing subdirectories separately
 - Use headless mode for automated tasks
