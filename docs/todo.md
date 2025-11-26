@@ -15,3 +15,6 @@
       so if folder only on the same level, it should not show others unless there
       is a sibling file that is actually included - rename to show siblings
 - [ ] add capability to rename tabs
+- [ ] add search function to scan those in view
+- [ ] add grep function to look for files not in view
+- [ ] modify workflow to not build for chores
