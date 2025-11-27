@@ -288,3 +288,16 @@ func (m *AppModel) populateChildren(state *TabState, parentPath string, entries 
 	}
 	targetNode.Children = children
 }
+
+// selectAll clears specific selections and selects only the Root Path.
+// Because the walker checks if a parent is selected, this implicitly selects everything.
+func selectAll(space *core.DirectorySpace) {
+	// Efficiency: O(1) - Just one string in the array covers the whole project
+	space.Config.ManualSelections = []string{space.RootPath}
+}
+
+// deselectAll clears the selection slice entirely.
+func deselectAll(space *core.DirectorySpace) {
+	// Efficiency: O(1) - Empty the slice
+	space.Config.ManualSelections = []string{}
+}

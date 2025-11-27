@@ -94,6 +94,29 @@ func TestExtractionScenarios(t *testing.T) {
 				"src/lib/helper.go", // Child of collapsed folder, should NOT be visible
 			},
 		},
+		{
+			name: "Select All Efficiency Check",
+			config: ExtractionConfig{
+				IncludeMode: true,
+				// Select Root to simulate Ctrl+A
+				ManualSelections: []string{
+					root,
+				},
+				// strictly exclude node_modules to match real app behavior
+				ExcludePatterns: []string{"node_modules"},
+			},
+			// Expect 6 files:
+			// 1. src/main.go
+			// 2. src/utils.go
+			// 3. src/data.txt
+			// 4. src/lib/helper.go
+			// 5. README.md
+			// 6. .env
+			// (node_modules is excluded)
+			wantFiles:       6,
+			wantContains:    []string{"src/main.go", "README.md", "src/lib/helper.go"},
+			wantNotContains: []string{"node_modules"},
+		},
 	}
 
 	for _, tt := range tests {

@@ -222,7 +222,21 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			sm := core.NewSessionManager("")
 			_ = sm.Save(m.Session)
 			return m, tea.Quit
+		case key.Matches(msg, m.keys.SelectAll):
+			if space != nil {
+				selectAll(space)
+				sm := core.NewSessionManager("")
+				_ = sm.Save(m.Session)
+				m.StatusMessage = "✓ Selected All"
+			}
 
+		case key.Matches(msg, m.keys.DeselectAll):
+			if space != nil {
+				deselectAll(space)
+				sm := core.NewSessionManager("")
+				_ = sm.Save(m.Session)
+				m.StatusMessage = "✓ Deselected All"
+			}
 		case key.Matches(msg, m.keys.Help):
 			m.ShowHelp = !m.ShowHelp
 

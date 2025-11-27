@@ -4,27 +4,29 @@ import "github.com/charmbracelet/bubbles/key"
 
 // --- Key Bindings ---
 type keyMap struct {
-	Up       key.Binding
-	Down     key.Binding
-	Left     key.Binding
-	Right    key.Binding
-	Select   key.Binding
-	Quit     key.Binding
-	Save     key.Binding
-	Export   key.Binding
-	Help     key.Binding
-	Tab      key.Binding
-	NewTab   key.Binding
-	CloseTab key.Binding
-	Root     key.Binding
-	Output   key.Binding
-	Include  key.Binding
-	Exclude  key.Binding
-	ToggleI  key.Binding
-	ToggleC  key.Binding
-	ToggleX  key.Binding
-	ToggleV  key.Binding // Structure View
-	Refresh  key.Binding // Refresh Directory
+	Up          key.Binding
+	Down        key.Binding
+	Left        key.Binding
+	Right       key.Binding
+	Select      key.Binding
+	Quit        key.Binding
+	Save        key.Binding
+	Export      key.Binding
+	Help        key.Binding
+	Tab         key.Binding
+	NewTab      key.Binding
+	CloseTab    key.Binding
+	Root        key.Binding
+	Output      key.Binding
+	Include     key.Binding
+	Exclude     key.Binding
+	ToggleI     key.Binding
+	ToggleC     key.Binding
+	ToggleX     key.Binding
+	ToggleV     key.Binding
+	Refresh     key.Binding
+	SelectAll   key.Binding
+	DeselectAll key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -126,5 +128,13 @@ var keys = keyMap{
 	ToggleV: key.NewBinding(
 		key.WithKeys("v"),
 		key.WithHelp("v", "toggle view structure"),
+	),
+	SelectAll: key.NewBinding(
+		key.WithKeys("ctrl+a"),
+		key.WithHelp("ctrl+a", "select all"),
+	),
+	DeselectAll: key.NewBinding(
+		key.WithKeys("ctrl+d"),
+		key.WithHelp("ctrl+d", "deselect all"),
 	),
 }
