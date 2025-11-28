@@ -130,7 +130,8 @@ func (m AppModel) renderSidebar(state *TabState, space *core.DirectorySpace, hei
 	selectionCount := lipgloss.NewStyle().
 		Foreground(m.Styles.ColorGreen).
 		Bold(true).
-		Background(m.Styles.ColorBase). // Ensure background here too
+		Background(m.Styles.ColorBase).
+		Width(34).
 		Render(fmt.Sprintf("%s Selected: %d", iconCheckSquare, len(space.Config.ManualSelections)))
 
 	// Compose the content
@@ -180,7 +181,7 @@ func (m AppModel) renderInput(label string, input textinput.Model, focused bool,
 		style = m.Styles.InputBoxFocused
 	}
 
-	renderedInput := style.Width(input.Width).Render(inputView)
+	renderedInput := style.Width(34).Render(inputView)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
