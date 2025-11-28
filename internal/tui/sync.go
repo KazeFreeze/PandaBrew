@@ -1,3 +1,4 @@
+// Package tui implements the terminal user interface logic.
 package tui
 
 func (m AppModel) syncStateToSession() {

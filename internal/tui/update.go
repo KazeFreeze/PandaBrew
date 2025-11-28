@@ -1,14 +1,17 @@
+// Package tui implements the terminal user interface logic.
 package tui
 
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"pandabrew/internal/core"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Update handles incoming messages and updates the model.
@@ -50,9 +53,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.NewTabInput.SetValue("")
 		}
 		return m, tea.Batch(cmds...)
-
-		// Handle New Tab Input Mode
 	}
+
+	// Handle New Tab Input Mode
 	if m.ShowNewTab {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
@@ -134,7 +137,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if state != nil {
 				m.populateChildren(state, msg.Path, msg.Entries)
 
-				// Restore state: Check if any new children should be expanded
 				var newCmds []tea.Cmd
 				var checkChildren func(node *TreeNode)
 				checkChildren = func(node *TreeNode) {
@@ -144,8 +146,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								child.Expanded = true
 								newCmds = append(newCmds, loadDirectoryCmd(child.FullPath))
 							}
-							// Recurse to check grandchildren if they are already populated
-							// (though typically they wouldn't be until the load command finishes)
 							if len(child.Children) > 0 {
 								checkChildren(child)
 							}
@@ -153,7 +153,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 
-				// Find the node that was just loaded and check its children
 				var find func(n *TreeNode) *TreeNode
 				find = func(n *TreeNode) *TreeNode {
 					if n.FullPath == msg.Path {
@@ -176,16 +175,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				state.rebuildVisibleList()
 
-				// Restore Cursor Position if target is set
 				if state.TargetCursorPath != "" {
 					for i, node := range state.VisibleNodes {
 						if node.FullPath == state.TargetCursorPath {
 							state.CursorIndex = i
-							// Once found, we can clear it to prevent jumping on future loads
-							// state.TargetCursorPath = "" // Optional: Keep it or clear it?
-							// Clearing it is safer so user can move freely.
-							// But if deeper items load later, we might want to jump there?
-							// Let's clear it only if we found it.
 							state.TargetCursorPath = ""
 							break
 						}
@@ -217,11 +210,31 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch {
+		case key.Matches(msg, m.keys.ToggleTheme):
+			nextTheme := GetNextTheme(m.Session.Theme)
+			m.Session.Theme = nextTheme
+
+			palette := GetTheme(nextTheme)
+			m.Styles = DefaultStyles(palette)
+
+			m.Help.Styles.FullKey = m.Styles.HelpKey
+			m.Help.Styles.ShortKey = m.Styles.HelpKey
+			m.Help.Styles.FullDesc = m.Styles.HelpDesc
+			m.Help.Styles.ShortDesc = m.Styles.HelpDesc
+			m.Spinner.Style = lipgloss.NewStyle().Foreground(m.Styles.ColorMauve)
+
+			sm := core.NewSessionManager("")
+			_ = sm.Save(m.Session)
+
+			displayTheme := strings.ToUpper(string(nextTheme[0])) + nextTheme[1:]
+			m.StatusMessage = "Theme: " + displayTheme
+
 		case key.Matches(msg, m.keys.Quit):
-			m.syncStateToSession() // Save View State
+			m.syncStateToSession()
 			sm := core.NewSessionManager("")
 			_ = sm.Save(m.Session)
 			return m, tea.Quit
+
 		case key.Matches(msg, m.keys.SelectAll):
 			if space != nil {
 				selectAll(space)
@@ -242,19 +255,12 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Refresh):
 			if state != nil && state.TreeRoot != nil {
-				// Refresh logic:
-				// 1. Always refresh root
-				// 2. Refresh all currently expanded folders
 				m.Loading = true
 				m.StatusMessage = "Refreshing view..."
-
-				// Root cmd
 				cmds = append(cmds, loadDirectoryCmd(space.RootPath))
-
-				// Recursive expanded folders cmds
 				expanded := CollectExpandedPaths(state.TreeRoot)
 				for _, p := range expanded {
-					if p != space.RootPath { // Avoid dup of root
+					if p != space.RootPath {
 						cmds = append(cmds, loadDirectoryCmd(p))
 					}
 				}
@@ -287,8 +293,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Tab):
 			if len(m.Session.Spaces) > 1 {
-				m.syncStateToSession() // Save View State of current tab before switch
-
+				m.syncStateToSession()
 				currIdx := 0
 				for i, s := range m.Session.Spaces {
 					if s.ID == space.ID {
@@ -360,7 +365,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if state != nil && len(state.VisibleNodes) > 0 {
 				node := state.VisibleNodes[state.CursorIndex]
 				toggleSelection(space, node.FullPath)
-				// Auto-save on selection change
 				sm := core.NewSessionManager("")
 				_ = sm.Save(m.Session)
 			}
@@ -397,7 +401,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, m.keys.Save):
-			m.syncStateToSession() // Save View State
+			m.syncStateToSession()
 			sm := core.NewSessionManager("")
 			if err := sm.Save(m.Session); err != nil {
 				m.StatusMessage = iconSave + " Error: " + err.Error()
@@ -407,9 +411,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Export):
 			if space != nil {
-				// Feature: Extract Everything in View
-				// If enabled, capture TUI state and pass to core
-				space.Config.AlwaysShowStructure = []string{} // Reset
+				space.Config.AlwaysShowStructure = []string{}
 				if space.Config.StructureView && state != nil && state.TreeRoot != nil {
 					space.Config.AlwaysShowStructure = CollectExpandedPaths(state.TreeRoot)
 				}

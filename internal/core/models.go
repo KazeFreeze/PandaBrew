@@ -11,6 +11,7 @@ type Session struct {
 	ID            string            `json:"id"`
 	ActiveSpaceID string            `json:"active_space_id"`
 	Spaces        []*DirectorySpace `json:"spaces"`
+	Theme         string            `json:"theme"` // Added for persistence
 	CreatedAt     time.Time         `json:"created_at"`
 	UpdatedAt     time.Time         `json:"updated_at"`
 }

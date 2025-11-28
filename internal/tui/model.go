@@ -1,3 +1,4 @@
+// Package tui implements the terminal user interface logic.
 package tui
 
 import (
@@ -35,6 +36,7 @@ type AppModel struct {
 	ExportProgress  float64
 	ExportTotal     int
 	ExportProcessed int
+	Styles          Styles // Added: Store global styles
 }
 
 // TabState holds the UI state for a specific directory space (tab).
@@ -71,9 +73,16 @@ type TreeNode struct {
 
 // InitialModel creates the starting state of the TUI.
 func InitialModel(session *core.Session) AppModel {
+	if session.Theme == "" {
+		session.Theme = "mocha"
+	}
+
+	palette := GetTheme(session.Theme)
+	styles := DefaultStyles(palette)
+
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(colorPurple)
+	s.Style = lipgloss.NewStyle().Foreground(styles.ColorMauve)
 
 	prog := progress.New(
 		progress.WithDefaultGradient(),
@@ -86,15 +95,10 @@ func InitialModel(session *core.Session) AppModel {
 	newTabInput.Width = 60
 
 	h := help.New()
-
-	// Style for the Keys (e.g., "q", "ctrl+c") -> Purple & Bold
-	h.Styles.FullKey = lipgloss.NewStyle().Foreground(colorPurple).Bold(true)
-	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(colorPurple).Bold(true)
-
-	// Style for the Descriptions (e.g., "quit app") -> White/Plain
-	h.Styles.FullDesc = lipgloss.NewStyle().Foreground(colorLight)
-	h.Styles.ShortDesc = lipgloss.NewStyle().Foreground(colorLight)
-	// -------------------------------------
+	h.Styles.FullKey = styles.HelpKey
+	h.Styles.ShortKey = styles.HelpKey
+	h.Styles.FullDesc = styles.HelpDesc
+	h.Styles.ShortDesc = styles.HelpDesc
 
 	model := AppModel{
 		Session:     session,
@@ -104,6 +108,7 @@ func InitialModel(session *core.Session) AppModel {
 		Help:        h,
 		NewTabInput: newTabInput,
 		keys:        keys,
+		Styles:      styles,
 	}
 
 	for _, space := range session.Spaces {
@@ -114,7 +119,6 @@ func InitialModel(session *core.Session) AppModel {
 }
 
 func newTabState(space *core.DirectorySpace) *TabState {
-	// Helper to create standard inputs
 	newInput := func(placeholder, value string) textinput.Model {
 		t := textinput.New()
 		t.Placeholder = placeholder
@@ -134,12 +138,10 @@ func newTabState(space *core.DirectorySpace) *TabState {
 		TargetCursorPath:    space.CursorPath,
 	}
 
-	// Populate target expanded paths
 	for _, p := range space.ExpandedPaths {
 		ts.TargetExpandedPaths[p] = true
 	}
 
-	// Initialize Tree
 	ts.TreeRoot = &TreeNode{
 		Name:     filepath.Base(space.RootPath),
 		FullPath: space.RootPath,
@@ -151,7 +153,6 @@ func newTabState(space *core.DirectorySpace) *TabState {
 	return ts
 }
 
-// Init handles the initial command to run when the app starts.
 func (m AppModel) Init() tea.Cmd {
 	activeSpace := m.Session.GetActiveSpace()
 	if activeSpace != nil {
@@ -166,7 +167,6 @@ func (ts *TabState) rebuildVisibleList() {
 	walk = func(n *TreeNode) {
 		ts.VisibleNodes = append(ts.VisibleNodes, n)
 		if n.Expanded {
-			// Mark last child for tree rendering
 			for i, child := range n.Children {
 				child.IsLast = (i == len(n.Children)-1)
 				walk(child)

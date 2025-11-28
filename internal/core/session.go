@@ -47,6 +47,7 @@ func (sm *SessionManager) Load() (*Session, error) {
 		return &Session{
 			ID:        "default",
 			Spaces:    []*DirectorySpace{},
+			Theme:     "mocha", // Default theme
 			CreatedAt: time.Now(),
 		}, nil
 	}
@@ -163,8 +164,6 @@ func (sm *SessionManager) ValidateSpace(space *DirectorySpace) []string {
 	// 1. Validate Root
 	if _, err := os.Stat(space.RootPath); os.IsNotExist(err) {
 		warnings = append(warnings, fmt.Sprintf("CRITICAL: Root path missing: %s", space.RootPath))
-		// If root is missing, we might as well clear everything else or mark it as invalid.
-		// For now, we proceed to clean up children relative to potentially broken root.
 	}
 
 	// 2. Validate & Clean Selections
@@ -175,13 +174,11 @@ func (sm *SessionManager) ValidateSpace(space *DirectorySpace) []string {
 		if sel == "" {
 			continue
 		}
-		// Dedup
 		if seen[sel] {
 			continue
 		}
-		// Check Existence
 		if _, err := os.Stat(sel); os.IsNotExist(err) {
-			continue // Skip missing files
+			continue
 		}
 
 		validSelections = append(validSelections, sel)
@@ -206,7 +203,7 @@ func (sm *SessionManager) ValidateSpace(space *DirectorySpace) []string {
 	// 4. Validate Cursor Path
 	if space.CursorPath != "" {
 		if _, err := os.Stat(space.CursorPath); os.IsNotExist(err) {
-			space.CursorPath = "" // Reset if missing
+			space.CursorPath = ""
 		}
 	}
 

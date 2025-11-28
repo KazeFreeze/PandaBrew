@@ -1,3 +1,4 @@
+// Package tui implements the terminal user interface logic.
 package tui
 
 import "github.com/charmbracelet/bubbles/key"
@@ -27,6 +28,7 @@ type keyMap struct {
 	Refresh     key.Binding
 	SelectAll   key.Binding
 	DeselectAll key.Binding
+	ToggleTheme key.Binding // Added
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -40,7 +42,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 		{k.Save, k.Export, k.Root, k.Output},
 		{k.Include, k.Exclude, k.Refresh},
 		{k.ToggleI, k.ToggleC, k.ToggleX, k.ToggleV},
-		{k.Help, k.Quit},
+		{k.ToggleTheme, k.Help, k.Quit}, // Added ToggleTheme here
 	}
 }
 
@@ -136,5 +138,9 @@ var keys = keyMap{
 	DeselectAll: key.NewBinding(
 		key.WithKeys("ctrl+d"),
 		key.WithHelp("ctrl+d", "deselect all"),
+	),
+	ToggleTheme: key.NewBinding(
+		key.WithKeys("ctrl+t"),
+		key.WithHelp("ctrl+t", "switch theme"),
 	),
 }

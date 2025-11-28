@@ -1,3 +1,4 @@
+// Package tui implements the terminal user interface logic.
 package tui
 
 import (
@@ -21,8 +22,6 @@ func calculateDepth(node *TreeNode, rootPath string) int {
 	return depth
 }
 
-// CollectExpandedPaths traverses the visual tree and returns a list of all
-// paths that are currently expanded (open) in the TUI.
 func CollectExpandedPaths(node *TreeNode) []string {
 	var paths []string
 	if node == nil {
@@ -50,7 +49,6 @@ func getRawFileIcon(node *TreeNode) string {
 	ext := strings.ToLower(filepath.Ext(node.Name))
 	name := strings.ToLower(node.Name)
 
-	// Special files
 	switch name {
 	case "dockerfile", ".dockerignore":
 		return iconDocker
@@ -62,7 +60,6 @@ func getRawFileIcon(node *TreeNode) string {
 		return iconJSON
 	}
 
-	// By extension
 	switch ext {
 	case ".go":
 		return iconGo
@@ -100,83 +97,82 @@ func getRawFileIcon(node *TreeNode) string {
 	}
 }
 
-func getFileIcon(node *TreeNode) string {
+// getFileIcon returns the rendered icon using the provided Styles
+func getFileIcon(node *TreeNode, s Styles) string {
 	if node.IsDir {
 		if node.Expanded {
-			return lipgloss.NewStyle().Foreground(colorYellow).Render(iconFolderOpen)
+			return lipgloss.NewStyle().Foreground(s.ColorYellow).Render(iconFolderOpen)
 		}
-		return lipgloss.NewStyle().Foreground(colorBlue).Render(iconFolder)
+		return lipgloss.NewStyle().Foreground(s.ColorBlue).Render(iconFolder)
 	}
 
 	ext := strings.ToLower(filepath.Ext(node.Name))
 	name := strings.ToLower(node.Name)
 
-	// Special files
 	switch name {
 	case "dockerfile", ".dockerignore":
-		return lipgloss.NewStyle().Foreground(colorBlue).Render(iconDocker)
+		return lipgloss.NewStyle().Foreground(s.ColorBlue).Render(iconDocker)
 	case ".gitignore", ".gitattributes":
-		return lipgloss.NewStyle().Foreground(colorOrange).Render(iconGit)
+		return lipgloss.NewStyle().Foreground(s.ColorPeach).Render(iconGit)
 	case "readme.md", "readme":
-		return lipgloss.NewStyle().Foreground(colorGreen).Render(iconMarkdown)
+		return lipgloss.NewStyle().Foreground(s.ColorGreen).Render(iconMarkdown)
 	case "package.json", "tsconfig.json":
-		return lipgloss.NewStyle().Foreground(colorYellow).Render(iconJSON)
+		return lipgloss.NewStyle().Foreground(s.ColorYellow).Render(iconJSON)
 	}
 
-	// By extension
 	iconStyle := lipgloss.NewStyle()
 	var icon string
 
 	switch ext {
 	case ".go":
 		icon = iconGo
-		iconStyle = iconStyle.Foreground(colorCyan)
+		iconStyle = iconStyle.Foreground(s.ColorBlue)
 	case ".md", ".markdown":
 		icon = iconMarkdown
-		iconStyle = iconStyle.Foreground(colorGreen)
+		iconStyle = iconStyle.Foreground(s.ColorGreen)
 	case ".json":
 		icon = iconJSON
-		iconStyle = iconStyle.Foreground(colorYellow)
+		iconStyle = iconStyle.Foreground(s.ColorYellow)
 	case ".yaml", ".yml":
 		icon = iconYAML
-		iconStyle = iconStyle.Foreground(colorPurple)
+		iconStyle = iconStyle.Foreground(s.ColorMauve)
 	case ".js", ".jsx":
 		icon = iconJS
-		iconStyle = iconStyle.Foreground(colorYellow)
+		iconStyle = iconStyle.Foreground(s.ColorYellow)
 	case ".ts", ".tsx":
 		icon = iconTS
-		iconStyle = iconStyle.Foreground(colorBlue)
+		iconStyle = iconStyle.Foreground(s.ColorBlue)
 	case ".py":
 		icon = iconPython
-		iconStyle = iconStyle.Foreground(colorBlue)
+		iconStyle = iconStyle.Foreground(s.ColorBlue)
 	case ".rs":
 		icon = iconRust
-		iconStyle = iconStyle.Foreground(colorOrange)
+		iconStyle = iconStyle.Foreground(s.ColorPeach)
 	case ".html", ".htm":
 		icon = iconHTML
-		iconStyle = iconStyle.Foreground(colorOrange)
+		iconStyle = iconStyle.Foreground(s.ColorPeach)
 	case ".css", ".scss", ".sass":
 		icon = iconCSS
-		iconStyle = iconStyle.Foreground(colorBlue)
+		iconStyle = iconStyle.Foreground(s.ColorBlue)
 	case ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp":
 		icon = iconImage
-		iconStyle = iconStyle.Foreground(colorPurple)
+		iconStyle = iconStyle.Foreground(s.ColorMauve)
 	case ".zip", ".tar", ".gz", ".rar", ".7z":
 		icon = iconArchive
-		iconStyle = iconStyle.Foreground(colorRed)
+		iconStyle = iconStyle.Foreground(s.ColorRed)
 	case ".toml", ".ini", ".conf", ".config":
 		icon = iconConfig
-		iconStyle = iconStyle.Foreground(colorGray)
+		iconStyle = iconStyle.Foreground(s.ColorSubtext)
 	case ".txt", ".log":
 		icon = iconText
-		iconStyle = iconStyle.Foreground(colorGray)
+		iconStyle = iconStyle.Foreground(s.ColorSubtext)
 	default:
 		if isCodeFile(ext) {
 			icon = iconCode
-			iconStyle = iconStyle.Foreground(colorGrayLight)
+			iconStyle = iconStyle.Foreground(s.ColorSubtext)
 		} else {
 			icon = iconFile
-			iconStyle = iconStyle.Foreground(colorGray)
+			iconStyle = iconStyle.Foreground(s.ColorSubtext)
 		}
 	}
 
@@ -194,40 +190,36 @@ func isCodeFile(ext string) bool {
 	return slices.Contains(codeExts, ext)
 }
 
-func getSelectionIcon(node *TreeNode, space *core.DirectorySpace) (string, lipgloss.Style) {
+func getSelectionIcon(node *TreeNode, space *core.DirectorySpace, s Styles) (string, lipgloss.Style) {
 	style := lipgloss.NewStyle()
 
-	// 1. Exact match
 	isExact := slices.Contains(space.Config.ManualSelections, node.FullPath)
 	if isExact {
-		return iconCheckSquare, style.Foreground(colorGreen).Bold(true)
+		return iconCheckSquare, style.Foreground(s.ColorGreen).Bold(true)
 	}
 
-	// 2. Implicit/Ancestor match (this file/folder is under a selected parent)
-	for _, s := range space.Config.ManualSelections {
-		if strings.HasPrefix(node.FullPath, s+string(filepath.Separator)) {
-			return iconDot, style.Foreground(colorGreen)
+	for _, sVal := range space.Config.ManualSelections {
+		if strings.HasPrefix(node.FullPath, sVal+string(filepath.Separator)) {
+			return iconDot, style.Foreground(s.ColorGreen)
 		}
 	}
 
-	// 3. Partial/Descendant match (some children are selected)
 	if node.IsDir {
 		prefix := node.FullPath + string(filepath.Separator)
-		for _, s := range space.Config.ManualSelections {
-			if strings.HasPrefix(s, prefix) {
-				return iconCircle, style.Foreground(colorYellow)
+		for _, sVal := range space.Config.ManualSelections {
+			if strings.HasPrefix(sVal, prefix) {
+				return iconCircle, style.Foreground(s.ColorYellow)
 			}
 		}
 	}
 
-	return iconSquare, style.Foreground(colorGray)
+	return iconSquare, style.Foreground(s.ColorSubtext)
 }
 
 func toggleSelection(space *core.DirectorySpace, path string) {
 	if path == "" {
 		return
 	}
-
 	found := false
 	for i, existing := range space.Config.ManualSelections {
 		if existing == path {
@@ -278,26 +270,23 @@ func splitClean(s string) []string {
 	return res
 }
 
-func enhancedCheckbox(label string, checked bool, hotkey string) string {
+func enhancedCheckbox(label string, checked bool, hotkey string, s Styles) string {
 	icon := iconSquare
-	style := lipgloss.NewStyle().Foreground(colorGray)
+	style := lipgloss.NewStyle().Foreground(s.ColorSubtext)
 
 	if checked {
 		icon = iconCheckSquare
-		style = lipgloss.NewStyle().Foreground(colorGreen).Bold(true)
+		style = lipgloss.NewStyle().Foreground(s.ColorGreen).Bold(true)
 	}
 
 	labelWithKey := fmt.Sprintf("%s %s (%s)", icon, label, hotkey)
 	return style.Render(labelWithKey)
 }
 
-// populateChildren updates the children of a node based on filesystem scan.
-// It preserves the 'Expanded' state and 'Children' (grandchildren) of existing nodes.
 func (m *AppModel) populateChildren(state *TabState, parentPath string, entries []core.DirEntry) {
 	var targetNode *TreeNode
 	var find func(*TreeNode) *TreeNode
 
-	// Recursive finder
 	find = func(n *TreeNode) *TreeNode {
 		if n.FullPath == parentPath {
 			return n
@@ -317,13 +306,11 @@ func (m *AppModel) populateChildren(state *TabState, parentPath string, entries 
 		return
 	}
 
-	// 1. Snapshot existing state to preserve expansions
 	existingState := make(map[string]*TreeNode)
 	for _, child := range targetNode.Children {
 		existingState[child.FullPath] = child
 	}
 
-	// 2. Build new children list merging old state
 	var children []*TreeNode
 	for _, e := range entries {
 		newNode := &TreeNode{
@@ -335,12 +322,7 @@ func (m *AppModel) populateChildren(state *TabState, parentPath string, entries 
 
 		if old, ok := existingState[e.FullPath]; ok {
 			newNode.Expanded = old.Expanded
-			// If it was expanded, it likely had children loaded. Preserve them.
-			// Ideally, we might want to refresh them too if this was a recursive refresh,
-			// but for a single level scan, we keep what we had unless specifically refreshed.
 			newNode.Children = old.Children
-
-			// Fix parent pointers for adopted grandchildren
 			for _, gc := range newNode.Children {
 				gc.Parent = newNode
 			}
@@ -351,15 +333,10 @@ func (m *AppModel) populateChildren(state *TabState, parentPath string, entries 
 	targetNode.Children = children
 }
 
-// selectAll clears specific selections and selects only the Root Path.
-// Because the walker checks if a parent is selected, this implicitly selects everything.
 func selectAll(space *core.DirectorySpace) {
-	// Efficiency: O(1) - Just one string in the array covers the whole project
 	space.Config.ManualSelections = []string{space.RootPath}
 }
 
-// deselectAll clears the selection slice entirely.
 func deselectAll(space *core.DirectorySpace) {
-	// Efficiency: O(1) - Empty the slice
 	space.Config.ManualSelections = []string{}
 }

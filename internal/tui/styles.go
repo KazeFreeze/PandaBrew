@@ -1,10 +1,9 @@
-// Package tui implements the terminal user interface using Bubble Tea.
+// Package tui implements the terminal user interface logic.
 package tui
 
 import "github.com/charmbracelet/lipgloss"
 
 // --- Nerd Font Icons ---
-// Browse https://www.nerdfonts.com/cheat-sheet for more icons
 const (
 	iconFolder     = "\uf07b" // nf-fa-folder
 	iconFolderOpen = "\uf07c" // nf-fa-folder_open
@@ -39,81 +38,122 @@ const (
 	iconGear     = "\uf013" // nf-fa-cog
 	iconFilter   = "\uf0b0" // nf-fa-filter
 
-	// Tree drawing characters
 	treeSpace = "  "
 )
 
-// --- Styles ---
-var (
-	// Color Palette
-	colorPurple    = lipgloss.Color("#7D56F4")
-	colorGray      = lipgloss.Color("#626262")
-	colorGrayLight = lipgloss.Color("#808080")
-	colorGrayDark  = lipgloss.Color("#404040")
-	colorLight     = lipgloss.Color("#FAFAFA")
-	colorGreen     = lipgloss.Color("#42f584")
-	colorYellow    = lipgloss.Color("#f5d442")
-	colorBlue      = lipgloss.Color("#61AFEF")
-	colorRed       = lipgloss.Color("#E06C75")
-	colorOrange    = lipgloss.Color("#FF8C00")
-	colorCyan      = lipgloss.Color("#56B6C2")
+// Styles holds all the lipgloss styles for the UI
+type Styles struct {
+	// Colors (Exposed for conditional rendering in utils)
+	ColorBase     lipgloss.Color
+	ColorSurface  lipgloss.Color
+	ColorText     lipgloss.Color
+	ColorSubtext  lipgloss.Color
+	ColorMauve    lipgloss.Color
+	ColorRed      lipgloss.Color
+	ColorBlue     lipgloss.Color
+	ColorGreen    lipgloss.Color
+	ColorYellow   lipgloss.Color
+	ColorPeach    lipgloss.Color
+	ColorLavender lipgloss.Color
+
+	// Components
+	Tab             lipgloss.Style
+	TabActive       lipgloss.Style
+	Sidebar         lipgloss.Style
+	SectionHeader   lipgloss.Style
+	InputLabel      lipgloss.Style
+	InputBox        lipgloss.Style
+	InputBoxFocused lipgloss.Style
+	Main            lipgloss.Style
+	StatusLeft      lipgloss.Style
+	StatusMiddle    lipgloss.Style
+	StatusRight     lipgloss.Style
+	TreeHighlight   lipgloss.Style
+	HelpKey         lipgloss.Style
+	HelpDesc        lipgloss.Style
+}
+
+// DefaultStyles generates the style sheet based on the provided palette
+func DefaultStyles(p ThemePalette) Styles {
+	s := Styles{
+		ColorBase:     p.Base,
+		ColorSurface:  p.Surface,
+		ColorText:     p.Text,
+		ColorSubtext:  p.Subtext,
+		ColorMauve:    p.Mauve,
+		ColorRed:      p.Red,
+		ColorBlue:     p.Blue,
+		ColorGreen:    p.Green,
+		ColorYellow:   p.Yellow,
+		ColorPeach:    p.Peach,
+		ColorLavender: p.Lavender,
+	}
 
 	// Tab Styles
-	styleTab = lipgloss.NewStyle().
-			Padding(0, 2).
-			Foreground(colorGrayLight).
-			Background(colorGrayDark)
+	s.Tab = lipgloss.NewStyle().
+		Padding(0, 2).
+		Foreground(p.Overlay).
+		Background(p.Surface)
 
-	styleTabActive = lipgloss.NewStyle().
-			Padding(0, 2).
-			Foreground(colorLight).
-			Background(colorPurple).
-			Bold(true)
+	s.TabActive = lipgloss.NewStyle().
+		Padding(0, 2).
+		Foreground(p.Base).
+		Background(p.Mauve).
+		Bold(true)
 
 	// Sidebar Styles
-	styleSidebar = lipgloss.NewStyle().
-			Width(38).
-			Padding(1, 2).
-			Border(lipgloss.RoundedBorder(), false, true, false, false).
-			BorderForeground(colorPurple)
+	s.Sidebar = lipgloss.NewStyle().
+		Width(38).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder(), false, true, false, false).
+		BorderForeground(p.Mauve)
 
-	styleSectionHeader = lipgloss.NewStyle().
-				Foreground(colorPurple).
-				Bold(true).
-				Underline(true).
-				MarginBottom(1)
+	s.SectionHeader = lipgloss.NewStyle().
+		Foreground(p.Mauve).
+		Bold(true).
+		Underline(true).
+		MarginBottom(1)
 
-	styleInputLabel = lipgloss.NewStyle().
-			Foreground(colorBlue).
-			Bold(true).
-			Width(34) // Adjusted to sidebar width
+	s.InputLabel = lipgloss.NewStyle().
+		Foreground(p.Blue).
+		Bold(true).
+		Width(34)
 
-	// Slim Input Box (No Border)
-	styleInputBox = lipgloss.NewStyle()
+	s.InputBox = lipgloss.NewStyle()
 
-	// Slim Focused Input Box (Text Color Change only)
-	styleInputBoxFocused = lipgloss.NewStyle().
-				Foreground(colorPurple)
+	s.InputBoxFocused = lipgloss.NewStyle().
+		Foreground(p.Mauve)
 
-	// Main Content Styles
-	styleMain = lipgloss.NewStyle().
-			Padding(1, 2).
-			MarginLeft(1)
+	s.Main = lipgloss.NewStyle().
+		Padding(1, 2).
+		MarginLeft(1)
 
 	// Status Bar Styles
-	styleStatusLeft = lipgloss.NewStyle().
-			Foreground(colorLight).
-			Background(colorPurple).
-			Padding(0, 2).
-			Bold(true)
+	s.StatusLeft = lipgloss.NewStyle().
+		Foreground(p.Base).
+		Background(p.Mauve).
+		Padding(0, 2).
+		Bold(true)
 
-	styleStatusMiddle = lipgloss.NewStyle().
-				Foreground(colorLight).
-				Background(colorGrayLight).
-				Padding(0, 2)
+	s.StatusMiddle = lipgloss.NewStyle().
+		Foreground(p.Base).
+		Background(p.Blue).
+		Padding(0, 2)
 
-	styleStatusRight = lipgloss.NewStyle().
-				Foreground(colorGrayLight).
-				Background(colorGrayDark).
-				Padding(0, 2)
-)
+	s.StatusRight = lipgloss.NewStyle().
+		Foreground(p.Text).
+		Background(p.Surface).
+		Padding(0, 2)
+
+	// Tree Highlight (Full Row)
+	s.TreeHighlight = lipgloss.NewStyle().
+		Background(p.Surface).
+		Foreground(p.Mauve).
+		Bold(true)
+
+	// Help Styles
+	s.HelpKey = lipgloss.NewStyle().Foreground(p.Mauve).Bold(true)
+	s.HelpDesc = lipgloss.NewStyle().Foreground(p.Text)
+
+	return s
+}
