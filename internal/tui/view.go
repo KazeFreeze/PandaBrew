@@ -372,10 +372,8 @@ func (m AppModel) renderHelpView() string {
 			Width(22).
 			Render(descText)
 
-		// Join key and description with no gap
 		itemContent := lipgloss.JoinHorizontal(lipgloss.Top, keyStyled, descStyled)
 
-		// Apply background to the entire item container
 		item := lipgloss.NewStyle().
 			Background(m.Styles.ColorSurface).
 			Width(itemWidth).
@@ -384,10 +382,8 @@ func (m AppModel) renderHelpView() string {
 		rowItems = append(rowItems, item)
 
 		if len(rowItems) >= maxCols {
-			// Join items in the row
 			row := lipgloss.JoinHorizontal(lipgloss.Top, rowItems...)
 
-			// Calculate remaining width and create filler for this row
 			rowWidth := lipgloss.Width(row)
 			contentWidth := maxCols * itemWidth
 			remainingWidth := max(0, contentWidth-rowWidth)
@@ -405,11 +401,9 @@ func (m AppModel) renderHelpView() string {
 		}
 	}
 
-	// Handle remaining items in the last row
 	if len(rowItems) > 0 {
 		row := lipgloss.JoinHorizontal(lipgloss.Top, rowItems...)
 
-		// Fill remaining width in the last row
 		rowWidth := lipgloss.Width(row)
 		contentWidth := maxCols * itemWidth
 		remainingWidth := max(0, contentWidth-rowWidth)
@@ -435,18 +429,17 @@ func (m AppModel) renderHelpView() string {
 		Align(lipgloss.Center).
 		Render(iconHelp + " Keyboard Shortcuts")
 
-	// Add spacing row with background
 	spacer := lipgloss.NewStyle().
 		Background(m.Styles.ColorSurface).
 		Width(maxCols * itemWidth).
 		Height(1).
 		Render(" ")
 
-	// Combine title, spacer, and help block
 	content := lipgloss.JoinVertical(lipgloss.Left, title, spacer, helpBlock)
 
 	boxWidth := min(m.Width-4, maxCols*itemWidth+4)
 
+	// 1. Render the main box first
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.Styles.ColorMauve).
@@ -456,34 +449,22 @@ func (m AppModel) renderHelpView() string {
 		Width(boxWidth).
 		Render(content)
 
-	closeHint := lipgloss.NewStyle().
+	// 2. Measure the ACTUAL rendered width (includes border + padding)
+	// This captures the extra +6 width that was causing the gap
+	totalWidth := lipgloss.Width(box)
+
+	// 3. Apply the TOTAL width to the footer elements
+	closeHintRow := lipgloss.NewStyle().
 		Foreground(m.Styles.ColorSubtext).
 		Background(m.Styles.ColorBase).
 		Italic(true).
+		Width(totalWidth). // Match exact width of the box above
+		Align(lipgloss.Center).
 		Render("Press ? to close")
 
-	// Center the close hint with fillers
-	closeHintWidth := lipgloss.Width(closeHint)
-	totalFillWidth := max(0, boxWidth-closeHintWidth)
-	leftFillWidth := totalFillWidth / 2
-	rightFillWidth := totalFillWidth - leftFillWidth
-
-	leftFiller := lipgloss.NewStyle().
-		Background(m.Styles.ColorBase).
-		Width(leftFillWidth).
-		Render(" ")
-
-	rightFiller := lipgloss.NewStyle().
-		Background(m.Styles.ColorBase).
-		Width(rightFillWidth).
-		Render(" ")
-
-	closeHintRow := lipgloss.JoinHorizontal(lipgloss.Top, leftFiller, closeHint, rightFiller)
-
-	// Add spacing before close hint
 	spacerBeforeHint := lipgloss.NewStyle().
 		Background(m.Styles.ColorBase).
-		Width(boxWidth).
+		Width(totalWidth). // Match exact width
 		Height(1).
 		Render(" ")
 
