@@ -91,7 +91,13 @@ func (m AppModel) renderTabs() string {
 		tabs = append(tabs, style.Render(name))
 	}
 
-	helpTab := m.Styles.Tab.Render(iconKeyboard + " [Tab] Switch • [Ctrl+N] New • [Ctrl+W] Close")
+	// Updated Help Tab to blend seamlessly with the header background
+	helpTab := lipgloss.NewStyle().
+		Foreground(m.Styles.ColorSubtext).
+		Background(m.Styles.ColorBase).
+		Padding(0, 2).
+		Render(iconKeyboard + " ? Help • Tab Switch • ^N New • ^W Close")
+
 	tabs = append(tabs, helpTab)
 
 	tabBar := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
@@ -391,9 +397,10 @@ func (m AppModel) renderHelpView() string {
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.Styles.ColorMauve).
+		BorderBackground(m.Styles.ColorBase).
 		Background(m.Styles.ColorSurface).
 		Padding(1, 2).
-		Width(boxWidth).
+		Width(boxWidth). // Force width to fill background
 		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", helpBlock))
 
 	closeHint := lipgloss.NewStyle().
@@ -413,44 +420,65 @@ func (m AppModel) renderHelpView() string {
 }
 
 func (m AppModel) renderNewTabView() string {
+	// Calculate dynamic width based on screen size, capped at 60
+	// We force all inner elements to this width (minus padding) to ensure
+	// the background color is painted across the entire row, preventing gaps.
+	modalWidth := min(m.Width-10, 60)
+	contentWidth := modalWidth - 4 // Account for padding (2 on each side)
+
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(m.Styles.ColorMauve).
+		Background(m.Styles.ColorSurface).
+		Width(contentWidth).
+		Align(lipgloss.Center).
 		Render(iconFolder + " Open New Tab")
 
 	description := lipgloss.NewStyle().
 		Foreground(m.Styles.ColorSubtext).
+		Background(m.Styles.ColorSurface).
+		Width(contentWidth).
+		Align(lipgloss.Center).
+		MarginTop(1). // Use MarginTop instead of empty string "" to safely spacing
 		Render("Enter the full path to a directory:")
 
+	// Input Box
+	// We set the input width to contentWidth - 2 (for the input's own internal border/padding)
 	inputBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.Styles.ColorMauve).
+		BorderBackground(m.Styles.ColorSurface).
 		Background(m.Styles.ColorSurface).
 		Padding(0, 1).
-		Width(min(m.Width-10, 70)).
+		Width(contentWidth - 2). // Ensure it fills the modal
+		MarginTop(1).
 		Render(m.NewTabInput.View())
 
 	hints := lipgloss.NewStyle().
 		Foreground(m.Styles.ColorSubtext).
 		Italic(true).
+		Background(m.Styles.ColorSurface).
+		Width(contentWidth).
+		Align(lipgloss.Center).
+		MarginTop(1).
 		Render("Enter to confirm • Esc to cancel")
 
+	// Join vertically without empty string spacers
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
 		title,
-		"",
 		description,
-		"",
 		inputBox,
-		"",
 		hints,
 	)
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.Styles.ColorMauve).
+		BorderBackground(m.Styles.ColorBase). // Transitions to global bg
 		Background(m.Styles.ColorSurface).
 		Padding(1, 2).
+		Width(modalWidth). // Forces background to fill the width
 		Render(content)
 
 	return lipgloss.Place(
