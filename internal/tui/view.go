@@ -91,7 +91,6 @@ func (m AppModel) renderTabs() string {
 		tabs = append(tabs, style.Render(name))
 	}
 
-	// Updated Help Tab to blend seamlessly with the header background
 	helpTab := lipgloss.NewStyle().
 		Foreground(m.Styles.ColorSubtext).
 		Background(m.Styles.ColorBase).
@@ -100,8 +99,10 @@ func (m AppModel) renderTabs() string {
 
 	tabs = append(tabs, helpTab)
 
+	// Join all tabs
 	tabBar := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 
+	// Wrap in a style that forces full width and adds background
 	return lipgloss.NewStyle().
 		Width(m.Width).
 		Background(m.Styles.ColorBase).
@@ -359,6 +360,7 @@ func (m AppModel) renderHelpView() string {
 		keyText := binding.Help().Key
 		keyStyled := lipgloss.NewStyle().
 			Foreground(m.Styles.ColorMauve).
+			Background(m.Styles.ColorSurface).
 			Bold(true).
 			Width(14).
 			Render(keyText)
@@ -366,23 +368,61 @@ func (m AppModel) renderHelpView() string {
 		descText := binding.Help().Desc
 		descStyled := lipgloss.NewStyle().
 			Foreground(m.Styles.ColorText).
+			Background(m.Styles.ColorSurface).
 			Width(22).
 			Render(descText)
 
+		// Join key and description with no gap
+		itemContent := lipgloss.JoinHorizontal(lipgloss.Top, keyStyled, descStyled)
+
+		// Apply background to the entire item container
 		item := lipgloss.NewStyle().
+			Background(m.Styles.ColorSurface).
 			Width(itemWidth).
-			Render(fmt.Sprintf("%s %s", keyStyled, descStyled))
+			Render(itemContent)
 
 		rowItems = append(rowItems, item)
 
 		if len(rowItems) >= maxCols {
-			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, rowItems...))
+			// Join items in the row
+			row := lipgloss.JoinHorizontal(lipgloss.Top, rowItems...)
+
+			// Calculate remaining width and create filler for this row
+			rowWidth := lipgloss.Width(row)
+			contentWidth := maxCols * itemWidth
+			remainingWidth := max(0, contentWidth-rowWidth)
+
+			if remainingWidth > 0 {
+				filler := lipgloss.NewStyle().
+					Background(m.Styles.ColorSurface).
+					Width(remainingWidth).
+					Render(" ")
+				row = lipgloss.JoinHorizontal(lipgloss.Top, row, filler)
+			}
+
+			rows = append(rows, row)
 			rowItems = nil
 		}
 	}
 
+	// Handle remaining items in the last row
 	if len(rowItems) > 0 {
-		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, rowItems...))
+		row := lipgloss.JoinHorizontal(lipgloss.Top, rowItems...)
+
+		// Fill remaining width in the last row
+		rowWidth := lipgloss.Width(row)
+		contentWidth := maxCols * itemWidth
+		remainingWidth := max(0, contentWidth-rowWidth)
+
+		if remainingWidth > 0 {
+			filler := lipgloss.NewStyle().
+				Background(m.Styles.ColorSurface).
+				Width(remainingWidth).
+				Render(" ")
+			row = lipgloss.JoinHorizontal(lipgloss.Top, row, filler)
+		}
+
+		rows = append(rows, row)
 	}
 
 	helpBlock := lipgloss.JoinVertical(lipgloss.Left, rows...)
@@ -390,7 +430,20 @@ func (m AppModel) renderHelpView() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(m.Styles.ColorMauve).
+		Background(m.Styles.ColorSurface).
+		Width(maxCols * itemWidth).
+		Align(lipgloss.Center).
 		Render(iconHelp + " Keyboard Shortcuts")
+
+	// Add spacing row with background
+	spacer := lipgloss.NewStyle().
+		Background(m.Styles.ColorSurface).
+		Width(maxCols * itemWidth).
+		Height(1).
+		Render(" ")
+
+	// Combine title, spacer, and help block
+	content := lipgloss.JoinVertical(lipgloss.Left, title, spacer, helpBlock)
 
 	boxWidth := min(m.Width-4, maxCols*itemWidth+4)
 
@@ -400,20 +453,46 @@ func (m AppModel) renderHelpView() string {
 		BorderBackground(m.Styles.ColorBase).
 		Background(m.Styles.ColorSurface).
 		Padding(1, 2).
-		Width(boxWidth). // Force width to fill background
-		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", helpBlock))
+		Width(boxWidth).
+		Render(content)
 
 	closeHint := lipgloss.NewStyle().
 		Foreground(m.Styles.ColorSubtext).
+		Background(m.Styles.ColorBase).
 		Italic(true).
 		Render("Press ? to close")
 
-	content := lipgloss.JoinVertical(lipgloss.Center, box, "", closeHint)
+	// Center the close hint with fillers
+	closeHintWidth := lipgloss.Width(closeHint)
+	totalFillWidth := max(0, boxWidth-closeHintWidth)
+	leftFillWidth := totalFillWidth / 2
+	rightFillWidth := totalFillWidth - leftFillWidth
+
+	leftFiller := lipgloss.NewStyle().
+		Background(m.Styles.ColorBase).
+		Width(leftFillWidth).
+		Render(" ")
+
+	rightFiller := lipgloss.NewStyle().
+		Background(m.Styles.ColorBase).
+		Width(rightFillWidth).
+		Render(" ")
+
+	closeHintRow := lipgloss.JoinHorizontal(lipgloss.Top, leftFiller, closeHint, rightFiller)
+
+	// Add spacing before close hint
+	spacerBeforeHint := lipgloss.NewStyle().
+		Background(m.Styles.ColorBase).
+		Width(boxWidth).
+		Height(1).
+		Render(" ")
+
+	finalContent := lipgloss.JoinVertical(lipgloss.Center, box, spacerBeforeHint, closeHintRow)
 
 	return lipgloss.Place(
 		m.Width, m.Height,
 		lipgloss.Center, lipgloss.Center,
-		content,
+		finalContent,
 		lipgloss.WithWhitespaceBackground(m.Styles.ColorBase),
 		lipgloss.WithWhitespaceChars(" "),
 	)
