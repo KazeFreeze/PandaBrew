@@ -217,7 +217,7 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 	// Total Fixed Width to subtract = 43 + 4 = 47
 	sidebarWidth := 47
 	treeWidth := max(0, m.Width-sidebarWidth)
-	contentWidth := max(0, treeWidth) // This is now pure content width
+	contentWidth := max(0, treeWidth-4)
 
 	for i := startRow; i < endRow; i++ {
 		node := state.VisibleNodes[i]
