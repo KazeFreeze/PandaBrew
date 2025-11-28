@@ -211,13 +211,10 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 
 	endRow := min(startRow+availableRows, totalNodes)
 
-	// Width Layout Logic
-	// Sidebar Width: 38 (content) + 2L+2R (pad) + 1R (border) = 43
-	// Tree Padding: 2L+2R = 4
-	// Total Fixed Width to subtract = 43 + 4 = 47
-	sidebarWidth := 47
+	sidebarWidth := 39
 	treeWidth := max(0, m.Width-sidebarWidth)
-	contentWidth := max(0, treeWidth-4)
+
+	contentWidth := treeWidth
 
 	for i := startRow; i < endRow; i++ {
 		node := state.VisibleNodes[i]
@@ -227,35 +224,36 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 		var isSelected bool
 
 		if i == state.CursorIndex {
-			rowBgColor = m.Styles.ColorSurface // Highlight Color
+			rowBgColor = m.Styles.ColorSurface
 			isSelected = true
 		} else {
-			rowBgColor = m.Styles.ColorBase // Standard Background
+			rowBgColor = m.Styles.ColorBase
 			isSelected = false
 		}
 
-		// 2. Render Indentation (Canvas)
+		// 2. Manual Padding (Left) - This replaces container padding
+		leftPad := lipgloss.NewStyle().
+			Background(rowBgColor).
+			Render("  ")
+
+		// 3. Render Indentation
 		depth := calculateDepth(node, space.RootPath)
 		indent := strings.Repeat(treeSpace, depth)
 		styledIndent := lipgloss.NewStyle().
 			Background(rowBgColor).
 			Render(indent)
 
-		// 3. Render Checkbox (Canvas)
+		// 4. Render Checkbox
 		checkChar, checkStyle := getSelectionIcon(node, space, m.Styles)
 		styledCheck := checkStyle.
 			Background(rowBgColor).
-			Render(checkChar + " ") // Add space after check
+			Render(checkChar + " ")
 
-		// 4. Render Icon (Canvas)
-		// Now we get style + char separate, so we can inject the background
+		// 5. Render Icon
 		var iconChar string
 		var iconStyle lipgloss.Style
 
 		if isSelected {
-			// For selection, we stick to a simpler high-contrast icon style
-			// or we can use the colored one but with the highlight background.
-			// Let's use the colored one for better visuals, but ensure background matches.
 			iconChar, iconStyle = getFileIcon(node, m.Styles)
 		} else {
 			iconChar, iconStyle = getFileIcon(node, m.Styles)
@@ -263,9 +261,9 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 
 		styledIcon := iconStyle.
 			Background(rowBgColor).
-			Render(iconChar + " ") // Add space after icon
+			Render(iconChar + " ")
 
-		// 5. Render Name (Canvas)
+		// 6. Render Name
 		nameStyle := lipgloss.NewStyle().
 			Foreground(m.Styles.ColorText).
 			Background(rowBgColor)
@@ -276,30 +274,25 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 
 		styledName := nameStyle.Render(node.Name)
 
-		// 6. Combine all parts into a solid line
-		// Since every part has the correct background, joining them should look seamless
+		// 7. Combine all parts
 		leftContent := lipgloss.JoinHorizontal(lipgloss.Top,
+			leftPad,
 			styledIndent,
 			styledCheck,
 			styledIcon,
 			styledName,
 		)
 
-		// 7. Fill the remaining width to ensure the background extends to the edge
-		// We use a "filler" style
-		// Calculate length of visible chars (rough approximation or using lipgloss.Width)
+		// 8. Fill the remaining width
 		currentWidth := lipgloss.Width(leftContent)
 		fillWidth := max(0, contentWidth-currentWidth)
+
 		filler := lipgloss.NewStyle().
 			Background(rowBgColor).
 			Width(fillWidth).
 			Render(" ")
 
 		line := lipgloss.JoinHorizontal(lipgloss.Top, leftContent, filler)
-
-		// 8. Add left/right padding if needed (part of tree container)
-		// The container handles the margins, but we can wrap this in a padder if strictly necessary.
-		// For now, we return the raw line which is a full "canvas" for this row.
 		treeRows = append(treeRows, line)
 	}
 
@@ -308,6 +301,7 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 	return m.Styles.Main.
 		Width(treeWidth).
 		Height(height).
+		Padding(1, 0).
 		Background(m.Styles.ColorBase).
 		Render(mainContent)
 }
