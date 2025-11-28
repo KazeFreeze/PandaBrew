@@ -212,41 +212,89 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 
 	sidebarWidth := 45
 	treeWidth := max(0, m.Width-sidebarWidth)
-
-	highlightStyle := m.Styles.TreeHighlight.Width(treeWidth - 4)
-	rowStyle := m.Styles.TreeRow.Width(treeWidth - 4)
+	contentWidth := max(0, treeWidth-4) // Subtract padding
 
 	for i := startRow; i < endRow; i++ {
 		node := state.VisibleNodes[i]
 
-		depth := calculateDepth(node, space.RootPath)
-		indent := strings.Repeat(treeSpace, depth)
+		// 1. Determine Row Background Color
+		var rowBgColor lipgloss.Color
+		var isSelected bool
 
-		var line string
 		if i == state.CursorIndex {
-			icon := getRawFileIcon(node)
-			checkIcon, _ := getSelectionIcon(node, space, m.Styles)
-			lineContent := fmt.Sprintf("%s%s %s %s", indent, checkIcon, icon, node.Name)
-
-			// Highlight row
-			line = highlightStyle.Render("▶ " + lineContent)
+			rowBgColor = m.Styles.ColorSurface // Highlight Color
+			isSelected = true
 		} else {
-			icon := getFileIcon(node, m.Styles)
-			checkIcon, checkStyle := getSelectionIcon(node, space, m.Styles)
-
-			// Explicitly add background to inner styles to prevent ANSI resets from creating gaps
-			safeCheckStyle := checkStyle.Background(m.Styles.ColorBase)
-			safeIcon := lipgloss.NewStyle().Background(m.Styles.ColorBase).Render(icon)
-
-			lineContent := fmt.Sprintf("%s%s %s %s", indent, checkIcon, safeIcon, node.Name)
-
-			// We render the inner content with its specific style (colors) + Background
-			styledInner := safeCheckStyle.Render(lineContent)
-
-			// Then wrap in rowStyle which enforces the Width
-			line = rowStyle.Render("  " + styledInner)
+			rowBgColor = m.Styles.ColorBase // Standard Background
+			isSelected = false
 		}
 
+		// 2. Render Indentation (Canvas)
+		depth := calculateDepth(node, space.RootPath)
+		indent := strings.Repeat(treeSpace, depth)
+		styledIndent := lipgloss.NewStyle().
+			Background(rowBgColor).
+			Render(indent)
+
+		// 3. Render Checkbox (Canvas)
+		checkChar, checkStyle := getSelectionIcon(node, space, m.Styles)
+		styledCheck := checkStyle.
+			Background(rowBgColor).
+			Render(checkChar + " ") // Add space after check
+
+		// 4. Render Icon (Canvas)
+		// Now we get style + char separate, so we can inject the background
+		var iconChar string
+		var iconStyle lipgloss.Style
+
+		if isSelected {
+			// For selection, we stick to a simpler high-contrast icon style
+			// or we can use the colored one but with the highlight background.
+			// Let's use the colored one for better visuals, but ensure background matches.
+			iconChar, iconStyle = getFileIcon(node, m.Styles)
+		} else {
+			iconChar, iconStyle = getFileIcon(node, m.Styles)
+		}
+
+		styledIcon := iconStyle.
+			Background(rowBgColor).
+			Render(iconChar + " ") // Add space after icon
+
+		// 5. Render Name (Canvas)
+		nameStyle := lipgloss.NewStyle().
+			Foreground(m.Styles.ColorText).
+			Background(rowBgColor)
+
+		if isSelected {
+			nameStyle = nameStyle.Foreground(m.Styles.ColorMauve).Bold(true)
+		}
+
+		styledName := nameStyle.Render(node.Name)
+
+		// 6. Combine all parts into a solid line
+		// Since every part has the correct background, joining them should look seamless
+		leftContent := lipgloss.JoinHorizontal(lipgloss.Top,
+			styledIndent,
+			styledCheck,
+			styledIcon,
+			styledName,
+		)
+
+		// 7. Fill the remaining width to ensure the background extends to the edge
+		// We use a "filler" style
+		// Calculate length of visible chars (rough approximation or using lipgloss.Width)
+		currentWidth := lipgloss.Width(leftContent)
+		fillWidth := max(0, contentWidth-currentWidth)
+		filler := lipgloss.NewStyle().
+			Background(rowBgColor).
+			Width(fillWidth).
+			Render(" ")
+
+		line := lipgloss.JoinHorizontal(lipgloss.Top, leftContent, filler)
+
+		// 8. Add left/right padding if needed (part of tree container)
+		// The container handles the margins, but we can wrap this in a padder if strictly necessary.
+		// For now, we return the raw line which is a full "canvas" for this row.
 		treeRows = append(treeRows, line)
 	}
 

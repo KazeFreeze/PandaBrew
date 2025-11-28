@@ -2,7 +2,6 @@
 package tui
 
 import (
-	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -97,13 +96,17 @@ func getRawFileIcon(node *TreeNode) string {
 	}
 }
 
-// getFileIcon returns the rendered icon using the provided Styles
-func getFileIcon(node *TreeNode, s Styles) string {
+// getFileIcon returns the icon character and its style.
+// It returns (iconChar, style). The style contains the foreground color.
+// The caller is responsible for applying the background color to match the row.
+func getFileIcon(node *TreeNode, s Styles) (string, lipgloss.Style) {
+	style := lipgloss.NewStyle()
+
 	if node.IsDir {
 		if node.Expanded {
-			return lipgloss.NewStyle().Foreground(s.ColorYellow).Render(iconFolderOpen)
+			return iconFolderOpen, style.Foreground(s.ColorYellow)
 		}
-		return lipgloss.NewStyle().Foreground(s.ColorBlue).Render(iconFolder)
+		return iconFolder, style.Foreground(s.ColorBlue)
 	}
 
 	ext := strings.ToLower(filepath.Ext(node.Name))
@@ -111,72 +114,50 @@ func getFileIcon(node *TreeNode, s Styles) string {
 
 	switch name {
 	case "dockerfile", ".dockerignore":
-		return lipgloss.NewStyle().Foreground(s.ColorBlue).Render(iconDocker)
+		return iconDocker, style.Foreground(s.ColorBlue)
 	case ".gitignore", ".gitattributes":
-		return lipgloss.NewStyle().Foreground(s.ColorPeach).Render(iconGit)
+		return iconGit, style.Foreground(s.ColorPeach)
 	case "readme.md", "readme":
-		return lipgloss.NewStyle().Foreground(s.ColorGreen).Render(iconMarkdown)
+		return iconMarkdown, style.Foreground(s.ColorGreen)
 	case "package.json", "tsconfig.json":
-		return lipgloss.NewStyle().Foreground(s.ColorYellow).Render(iconJSON)
+		return iconJSON, style.Foreground(s.ColorYellow)
 	}
-
-	iconStyle := lipgloss.NewStyle()
-	var icon string
 
 	switch ext {
 	case ".go":
-		icon = iconGo
-		iconStyle = iconStyle.Foreground(s.ColorBlue)
+		return iconGo, style.Foreground(s.ColorBlue)
 	case ".md", ".markdown":
-		icon = iconMarkdown
-		iconStyle = iconStyle.Foreground(s.ColorGreen)
+		return iconMarkdown, style.Foreground(s.ColorGreen)
 	case ".json":
-		icon = iconJSON
-		iconStyle = iconStyle.Foreground(s.ColorYellow)
+		return iconJSON, style.Foreground(s.ColorYellow)
 	case ".yaml", ".yml":
-		icon = iconYAML
-		iconStyle = iconStyle.Foreground(s.ColorMauve)
+		return iconYAML, style.Foreground(s.ColorMauve)
 	case ".js", ".jsx":
-		icon = iconJS
-		iconStyle = iconStyle.Foreground(s.ColorYellow)
+		return iconJS, style.Foreground(s.ColorYellow)
 	case ".ts", ".tsx":
-		icon = iconTS
-		iconStyle = iconStyle.Foreground(s.ColorBlue)
+		return iconTS, style.Foreground(s.ColorBlue)
 	case ".py":
-		icon = iconPython
-		iconStyle = iconStyle.Foreground(s.ColorBlue)
+		return iconPython, style.Foreground(s.ColorBlue)
 	case ".rs":
-		icon = iconRust
-		iconStyle = iconStyle.Foreground(s.ColorPeach)
+		return iconRust, style.Foreground(s.ColorPeach)
 	case ".html", ".htm":
-		icon = iconHTML
-		iconStyle = iconStyle.Foreground(s.ColorPeach)
+		return iconHTML, style.Foreground(s.ColorPeach)
 	case ".css", ".scss", ".sass":
-		icon = iconCSS
-		iconStyle = iconStyle.Foreground(s.ColorBlue)
+		return iconCSS, style.Foreground(s.ColorBlue)
 	case ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp":
-		icon = iconImage
-		iconStyle = iconStyle.Foreground(s.ColorMauve)
+		return iconImage, style.Foreground(s.ColorMauve)
 	case ".zip", ".tar", ".gz", ".rar", ".7z":
-		icon = iconArchive
-		iconStyle = iconStyle.Foreground(s.ColorRed)
+		return iconArchive, style.Foreground(s.ColorRed)
 	case ".toml", ".ini", ".conf", ".config":
-		icon = iconConfig
-		iconStyle = iconStyle.Foreground(s.ColorSubtext)
+		return iconConfig, style.Foreground(s.ColorSubtext)
 	case ".txt", ".log":
-		icon = iconText
-		iconStyle = iconStyle.Foreground(s.ColorSubtext)
+		return iconText, style.Foreground(s.ColorSubtext)
 	default:
 		if isCodeFile(ext) {
-			icon = iconCode
-			iconStyle = iconStyle.Foreground(s.ColorSubtext)
-		} else {
-			icon = iconFile
-			iconStyle = iconStyle.Foreground(s.ColorSubtext)
+			return iconCode, style.Foreground(s.ColorSubtext)
 		}
+		return iconFile, style.Foreground(s.ColorSubtext)
 	}
-
-	return iconStyle.Render(icon)
 }
 
 func isCodeFile(ext string) bool {
@@ -268,19 +249,6 @@ func splitClean(s string) []string {
 		}
 	}
 	return res
-}
-
-func enhancedCheckbox(label string, checked bool, hotkey string, s Styles) string {
-	icon := iconSquare
-	style := lipgloss.NewStyle().Foreground(s.ColorSubtext)
-
-	if checked {
-		icon = iconCheckSquare
-		style = lipgloss.NewStyle().Foreground(s.ColorGreen).Bold(true)
-	}
-
-	labelWithKey := fmt.Sprintf("%s %s (%s)", icon, label, hotkey)
-	return style.Render(labelWithKey)
 }
 
 func (m *AppModel) populateChildren(state *TabState, parentPath string, entries []core.DirEntry) {
