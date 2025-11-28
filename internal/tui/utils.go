@@ -38,6 +38,68 @@ func CollectExpandedPaths(node *TreeNode) []string {
 	return paths
 }
 
+// getRawFileIcon returns the icon character without any styling
+func getRawFileIcon(node *TreeNode) string {
+	if node.IsDir {
+		if node.Expanded {
+			return iconFolderOpen
+		}
+		return iconFolder
+	}
+
+	ext := strings.ToLower(filepath.Ext(node.Name))
+	name := strings.ToLower(node.Name)
+
+	// Special files
+	switch name {
+	case "dockerfile", ".dockerignore":
+		return iconDocker
+	case ".gitignore", ".gitattributes":
+		return iconGit
+	case "readme.md", "readme":
+		return iconMarkdown
+	case "package.json", "tsconfig.json":
+		return iconJSON
+	}
+
+	// By extension
+	switch ext {
+	case ".go":
+		return iconGo
+	case ".md", ".markdown":
+		return iconMarkdown
+	case ".json":
+		return iconJSON
+	case ".yaml", ".yml":
+		return iconYAML
+	case ".js", ".jsx":
+		return iconJS
+	case ".ts", ".tsx":
+		return iconTS
+	case ".py":
+		return iconPython
+	case ".rs":
+		return iconRust
+	case ".html", ".htm":
+		return iconHTML
+	case ".css", ".scss", ".sass":
+		return iconCSS
+	case ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp":
+		return iconImage
+	case ".zip", ".tar", ".gz", ".rar", ".7z":
+		return iconArchive
+	case ".toml", ".ini", ".conf", ".config":
+		return iconConfig
+	case ".txt", ".log":
+		return iconText
+	default:
+		if isCodeFile(ext) {
+			return iconCode
+		}
+		return iconFile
+	}
+}
+
 func getFileIcon(node *TreeNode) string {
 	if node.IsDir {
 		if node.Expanded {

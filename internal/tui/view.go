@@ -56,7 +56,7 @@ func (m AppModel) renderTabs() string {
 		Foreground(colorPurple).
 		Bold(true).
 		Padding(0, 2).
-		Render("ʕ•́ᴥ•̀ʔっ☕ PandaBrew")
+		Render("ʕ•ᴥ•ʔっ☕ PandaBrew")
 	tabs = append(tabs, branding)
 
 	for _, s := range m.Session.Spaces {
@@ -124,10 +124,33 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace) string
 	// Calculate visible window
 	maxRows := m.Height - 8
 	startRow := 0
-	if state.CursorIndex > maxRows/2 {
-		startRow = state.CursorIndex - maxRows/2
+
+	// Improved scrolling: center cursor until near the bottom
+	totalNodes := len(state.VisibleNodes)
+	if totalNodes > maxRows {
+		// Calculate the threshold where we stop centering (when near bottom)
+		bottomThreshold := totalNodes - maxRows
+
+		if state.CursorIndex <= maxRows/2 {
+			// Near top: show from beginning
+			startRow = 0
+		} else if state.CursorIndex >= bottomThreshold+maxRows/2 {
+			// Near bottom: stop centering, lock to bottom
+			startRow = bottomThreshold
+		} else {
+			// Middle: keep cursor centered
+			startRow = state.CursorIndex - maxRows/2
+		}
 	}
-	endRow := min(startRow+maxRows, len(state.VisibleNodes))
+
+	endRow := min(startRow+maxRows, totalNodes)
+
+	// Define highlight style for the active row (full width)
+	treeWidth := m.Width - 45 - 4 // Account for main content width and padding
+	highlightStyle := lipgloss.NewStyle().
+		Background(colorPurple).
+		Foreground(colorLight).
+		Width(treeWidth)
 
 	for i := startRow; i < endRow; i++ {
 		node := state.VisibleNodes[i]
@@ -136,21 +159,27 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace) string
 		depth := calculateDepth(node, space.RootPath)
 		indent := strings.Repeat(treeSpace, depth)
 
-		// Get appropriate icon
-		icon := getFileIcon(node)
-
-		// Selection indicator
-		checkIcon, checkStyle := getSelectionIcon(node, space)
-
-		// Build line
-		line := fmt.Sprintf("%s%s %s %s", indent, checkIcon, icon, node.Name)
-		line = checkStyle.Render(line)
-
-		// Cursor
+		var line string
 		if i == state.CursorIndex {
-			line = styleCursor.Render("▶ ") + line
+			// For highlighted row: get raw icons without styling
+			icon := getRawFileIcon(node)
+			checkIcon, _ := getSelectionIcon(node, space)
+
+			// Build line content with plain text
+			lineContent := fmt.Sprintf("%s%s %s %s", indent, checkIcon, icon, node.Name)
+			cursorSymbol := "▶ "
+			fullLine := cursorSymbol + lineContent
+
+			// Apply highlight to the entire line
+			line = highlightStyle.Render(fullLine)
 		} else {
-			line = "  " + line
+			// For non-highlighted rows: use styled icons
+			icon := getFileIcon(node)
+			checkIcon, checkStyle := getSelectionIcon(node, space)
+
+			lineContent := fmt.Sprintf("%s%s %s %s", indent, checkIcon, icon, node.Name)
+			styledContent := checkStyle.Render(lineContent)
+			line = "  " + styledContent
 		}
 
 		treeRows = append(treeRows, line)

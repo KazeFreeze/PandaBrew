@@ -100,10 +100,6 @@ var (
 			Padding(1, 2).
 			MarginLeft(1)
 
-	styleCursor = lipgloss.NewStyle().
-			Foreground(colorPurple).
-			Bold(true)
-
 	// Status Bar Styles
 	styleStatusLeft = lipgloss.NewStyle().
 			Foreground(colorLight).
