@@ -210,6 +210,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch {
+		// Restore ToggleTheme logic with dynamic input styling
 		case key.Matches(msg, m.keys.ToggleTheme):
 			nextTheme := GetNextTheme(m.Session.Theme)
 			m.Session.Theme = nextTheme
@@ -222,6 +223,15 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Help.Styles.FullDesc = m.Styles.HelpDesc
 			m.Help.Styles.ShortDesc = m.Styles.HelpDesc
 			m.Spinner.Style = lipgloss.NewStyle().Foreground(m.Styles.ColorMauve)
+
+			// Fix: Dynamically update all text inputs to use the new theme's background color
+			updateInputStyle(&m.NewTabInput, m.Styles)
+			for _, ts := range m.TabStates {
+				updateInputStyle(&ts.InputRoot, m.Styles)
+				updateInputStyle(&ts.InputOutput, m.Styles)
+				updateInputStyle(&ts.InputInclude, m.Styles)
+				updateInputStyle(&ts.InputExclude, m.Styles)
+			}
 
 			sm := core.NewSessionManager("")
 			_ = sm.Save(m.Session)
@@ -430,4 +440,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func updateInputStyle(t *textinput.Model, s Styles) {
+	t.TextStyle = lipgloss.NewStyle().Background(s.ColorBase)
+	t.PlaceholderStyle = lipgloss.NewStyle().
+		Foreground(s.ColorSubtext).
+		Background(s.ColorBase)
+	t.Cursor.Style = lipgloss.NewStyle().Foreground(s.ColorMauve)
+	t.Cursor.TextStyle = lipgloss.NewStyle().Background(s.ColorBase)
 }
