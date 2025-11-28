@@ -98,6 +98,9 @@ func InitialModel(session *core.Session) AppModel {
 	newTabInput.PlaceholderStyle = lipgloss.NewStyle().
 		Foreground(styles.ColorSubtext).
 		Background(styles.ColorSurface)
+	// CRITICAL FIX: Set cursor TextStyle background to match input background
+	newTabInput.Cursor.Style = lipgloss.NewStyle().Foreground(styles.ColorMauve)
+	newTabInput.Cursor.TextStyle = lipgloss.NewStyle().Background(styles.ColorSurface)
 
 	h := help.New()
 	h.Styles.FullKey = styles.HelpKey
@@ -137,6 +140,9 @@ func newTabState(space *core.DirectorySpace, styles Styles) *TabState {
 		t.PlaceholderStyle = lipgloss.NewStyle().
 			Foreground(styles.ColorSubtext).
 			Background(styles.ColorBase)
+		// CRITICAL FIX: Set cursor TextStyle background to match input background
+		t.Cursor.Style = lipgloss.NewStyle().Foreground(styles.ColorMauve)
+		t.Cursor.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
 		return t
 	}
 
