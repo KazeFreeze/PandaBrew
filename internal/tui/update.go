@@ -36,7 +36,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			sm := core.NewSessionManager("")
 			newSpace, err := sm.AddSpaceFromPath(m.Session, msg.Path)
 			if err == nil {
-				m.TabStates[newSpace.ID] = newTabState(newSpace)
+				m.TabStates[newSpace.ID] = newTabState(newSpace, m.Styles)
 				m.StatusMessage = fmt.Sprintf("✓ Opened new tab: %s", filepath.Base(msg.Path))
 				m.ShowNewTab = false
 				m.NewTabInput.Blur()

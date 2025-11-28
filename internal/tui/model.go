@@ -93,6 +93,11 @@ func InitialModel(session *core.Session) AppModel {
 	newTabInput.Placeholder = "Enter directory path..."
 	newTabInput.CharLimit = 200
 	newTabInput.Width = 60
+	// Fix: Set background colors on the NewTabInput
+	newTabInput.TextStyle = lipgloss.NewStyle().Background(styles.ColorSurface)
+	newTabInput.PlaceholderStyle = lipgloss.NewStyle().
+		Foreground(styles.ColorSubtext).
+		Background(styles.ColorSurface)
 
 	h := help.New()
 	h.Styles.FullKey = styles.HelpKey
@@ -111,20 +116,27 @@ func InitialModel(session *core.Session) AppModel {
 		Styles:      styles,
 	}
 
+	// Initialize tab states with styles
 	for _, space := range session.Spaces {
-		model.TabStates[space.ID] = newTabState(space)
+		model.TabStates[space.ID] = newTabState(space, styles)
 	}
 
 	return model
 }
 
-func newTabState(space *core.DirectorySpace) *TabState {
+// Updated to accept styles parameter
+func newTabState(space *core.DirectorySpace, styles Styles) *TabState {
 	newInput := func(placeholder, value string) textinput.Model {
 		t := textinput.New()
 		t.Placeholder = placeholder
 		t.SetValue(value)
 		t.CharLimit = 150
-		t.Width = 30
+		t.Width = 34 // Match the container width
+		// Fix: Set background colors for all inputs
+		t.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
+		t.PlaceholderStyle = lipgloss.NewStyle().
+			Foreground(styles.ColorSubtext).
+			Background(styles.ColorBase)
 		return t
 	}
 

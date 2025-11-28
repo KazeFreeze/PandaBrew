@@ -187,7 +187,7 @@ func (m AppModel) renderInput(label string, input textinput.Model, focused bool,
 		style = m.Styles.InputBoxFocused
 	}
 
-	renderedInput := style.Width(34).Render(inputView)
+	renderedInput := style.Width(35).Render(inputView)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
