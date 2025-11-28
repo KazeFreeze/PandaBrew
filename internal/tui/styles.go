@@ -106,6 +106,7 @@ func DefaultStyles(p ThemePalette) Styles {
 
 	// Sidebar Styles
 	// Important: Background is Base to blend with global background
+	// Width(38) + Padding(4) + Border(1) = 43 Total Width
 	s.Sidebar = lipgloss.NewStyle().
 		Width(38).
 		Padding(1, 2).
@@ -136,10 +137,10 @@ func DefaultStyles(p ThemePalette) Styles {
 		Background(p.Base)
 
 	// Main Content Area
-	// Important: Background is Base. Padding ensures content doesn't hit edges immediately.
+	// Removed MarginLeft(1) to allow background color to propagate from the sidebar.
+	// Padding(1, 2) provides the visual separation while maintaining the background.
 	s.Main = lipgloss.NewStyle().
 		Padding(1, 2).
-		MarginLeft(1).
 		Background(p.Base)
 
 	// Status Bar Styles
