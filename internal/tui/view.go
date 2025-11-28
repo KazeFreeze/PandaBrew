@@ -15,42 +15,60 @@ import (
 
 // View renders the UI.
 func (m AppModel) View() string {
-	var content string
-
-	// 1. Determine which view to render
+	// 1. Handle Overlays (Help / New Tab)
 	if m.ShowNewTab {
-		content = m.renderNewTabView()
+		return m.renderNewTabView()
 	} else if m.ShowHelp {
-		content = m.renderHelpView()
-	} else {
-		space := m.Session.GetActiveSpace()
-		if space == nil {
-			content = lipgloss.Place(
-				m.Width, m.Height,
-				lipgloss.Center, lipgloss.Center,
-				"No workspace open. Press ctrl+n to create a new tab.",
-			)
-		} else {
-			state := m.TabStates[space.ID]
-
-			tabs := m.renderTabs()
-			sidebar := m.renderSidebar(state, space)
-			tree := m.renderTree(state, space)
-			footer := m.renderFooter(space)
-
-			body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, tree)
-			content = lipgloss.JoinVertical(lipgloss.Left, tabs, body, footer)
-		}
+		return m.renderHelpView()
 	}
 
-	// 2. Wrap the entire view in the global theme background
-	// This ensures we don't bleed the terminal's default background
-	return lipgloss.NewStyle().
-		Background(m.Styles.ColorBase).
-		Foreground(m.Styles.ColorText).
-		Width(m.Width).
-		Height(m.Height).
-		Render(content)
+	// 2. Main Application Layout
+	space := m.Session.GetActiveSpace()
+	var content string
+
+	if space == nil {
+		emptyMsg := lipgloss.NewStyle().
+			Foreground(m.Styles.ColorSubtext).
+			Render("No workspace open. Press ctrl+n to create a new tab.")
+
+		content = lipgloss.Place(
+			m.Width, m.Height,
+			lipgloss.Center, lipgloss.Center,
+			emptyMsg,
+			lipgloss.WithWhitespaceBackground(m.Styles.ColorBase),
+		)
+	} else {
+		state := m.TabStates[space.ID]
+
+		// A. Render Header and Footer first to measure their height
+		tabs := m.renderTabs()
+		footer := m.renderFooter(space)
+
+		headerHeight := lipgloss.Height(tabs)
+		footerHeight := lipgloss.Height(footer)
+
+		// B. Calculate exact remaining height for the middle section
+		middleHeight := max(0, m.Height-headerHeight-footerHeight)
+
+		// C. Render Middle Section with explicit height
+		sidebar := m.renderSidebar(state, space, middleHeight)
+		tree := m.renderTree(state, space, middleHeight)
+
+		// Join sidebar and tree horizontally
+		body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, tree)
+
+		// Join everything vertically
+		content = lipgloss.JoinVertical(lipgloss.Left, tabs, body, footer)
+	}
+
+	// 3. Final Canvas Composition
+	return lipgloss.Place(
+		m.Width, m.Height,
+		lipgloss.Left, lipgloss.Top,
+		content,
+		lipgloss.WithWhitespaceBackground(m.Styles.ColorBase),
+		lipgloss.WithWhitespaceChars(" "),
+	)
 }
 
 func (m AppModel) renderTabs() string {
@@ -58,6 +76,7 @@ func (m AppModel) renderTabs() string {
 
 	branding := lipgloss.NewStyle().
 		Foreground(m.Styles.ColorMauve).
+		Background(m.Styles.ColorBase).
 		Bold(true).
 		Padding(0, 2).
 		Render("ʕ•ᴥ•ʔっ☕ PandaBrew")
@@ -71,14 +90,24 @@ func (m AppModel) renderTabs() string {
 		}
 		tabs = append(tabs, style.Render(name))
 	}
-	tabs = append(tabs, m.Styles.Tab.Render(iconKeyboard+" [Tab] Switch • [Ctrl+N] New • [Ctrl+W] Close"))
-	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+
+	helpTab := m.Styles.Tab.Render(iconKeyboard + " [Tab] Switch • [Ctrl+N] New • [Ctrl+W] Close")
+	tabs = append(tabs, helpTab)
+
+	tabBar := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+
+	return lipgloss.NewStyle().
+		Width(m.Width).
+		Background(m.Styles.ColorBase).
+		Render(tabBar)
 }
 
-func (m AppModel) renderSidebar(state *TabState, space *core.DirectorySpace) string {
-	settings := lipgloss.JoinVertical(lipgloss.Left,
-		m.Styles.SectionHeader.Render(iconGear+" Configuration"),
-		"",
+func (m AppModel) renderSidebar(state *TabState, space *core.DirectorySpace, height int) string {
+	// Sidebar Header
+	header := m.Styles.SectionHeader.Render(iconGear + " Configuration")
+
+	// Inputs
+	inputs := lipgloss.JoinVertical(lipgloss.Left,
 		m.renderInput("Root", state.InputRoot, state.ActiveInput == 1, "r"),
 		"",
 		m.renderInput("Output", state.InputOutput, state.ActiveInput == 2, "o"),
@@ -86,22 +115,59 @@ func (m AppModel) renderSidebar(state *TabState, space *core.DirectorySpace) str
 		m.renderInput("Include", state.InputInclude, state.ActiveInput == 3, "f"),
 		"",
 		m.renderInput("Exclude", state.InputExclude, state.ActiveInput == 4, "g"),
-		"",
-		"",
-		m.Styles.SectionHeader.Render(iconFilter+" Options"),
-		enhancedCheckbox("Include Mode", space.Config.IncludeMode, "i", m.Styles),
-		enhancedCheckbox("Show Context", space.Config.ShowContext, "c", m.Styles),
-		enhancedCheckbox("Show Excluded", space.Config.ShowExcluded, "x", m.Styles),
-		enhancedCheckbox("Struct in View", space.Config.StructureView, "v", m.Styles),
-		"",
-		"",
-		lipgloss.NewStyle().
-			Foreground(m.Styles.ColorGreen).
-			Bold(true).
-			Render(fmt.Sprintf("%s Selected: %d", iconCheckSquare, len(space.Config.ManualSelections))),
 	)
 
-	return m.Styles.Sidebar.Height(m.Height - 7).Render(settings)
+	// Options
+	optionsHeader := m.Styles.SectionHeader.Render(iconFilter + " Options")
+	options := lipgloss.JoinVertical(lipgloss.Left,
+		m.renderCheckbox("Include Mode", space.Config.IncludeMode, "i"),
+		m.renderCheckbox("Show Context", space.Config.ShowContext, "c"),
+		m.renderCheckbox("Show Excluded", space.Config.ShowExcluded, "x"),
+		m.renderCheckbox("Struct in View", space.Config.StructureView, "v"),
+	)
+
+	// Selection Count
+	selectionCount := lipgloss.NewStyle().
+		Foreground(m.Styles.ColorGreen).
+		Bold(true).
+		Background(m.Styles.ColorBase). // Ensure background here too
+		Render(fmt.Sprintf("%s Selected: %d", iconCheckSquare, len(space.Config.ManualSelections)))
+
+	// Compose the content
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		header,
+		"",
+		inputs,
+		"",
+		"",
+		optionsHeader,
+		options,
+		"",
+		"",
+		selectionCount,
+	)
+
+	return m.Styles.Sidebar.
+		Height(height).
+		Background(m.Styles.ColorBase).
+		Render(content)
+}
+
+// renderCheckbox replaces the external utility to ensure proper background styling
+func (m AppModel) renderCheckbox(label string, checked bool, hotkey string) string {
+	icon := iconSquare
+	style := m.Styles.Option
+
+	if checked {
+		icon = iconCheckSquare
+		style = m.Styles.OptionSelected
+	}
+
+	labelWithKey := fmt.Sprintf("%s %s (%s)", icon, label, hotkey)
+
+	// Ensure the checkbox also consumes width to prevent background gaps,
+	// similar to SectionHeader (34 width = 38 - 4 padding)
+	return style.Width(34).Render(labelWithKey)
 }
 
 func (m AppModel) renderInput(label string, input textinput.Model, focused bool, hotkey string) string {
@@ -109,41 +175,46 @@ func (m AppModel) renderInput(label string, input textinput.Model, focused bool,
 	labelStyle := m.Styles.InputLabel.Render(labelWithKey)
 
 	inputView := input.View()
+	style := m.Styles.InputBox
 	if focused {
-		inputView = m.Styles.InputBoxFocused.Render(inputView)
-	} else {
-		inputView = m.Styles.InputBox.Render(inputView)
+		style = m.Styles.InputBoxFocused
 	}
+
+	renderedInput := style.Width(input.Width).Render(inputView)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		labelStyle,
-		inputView,
+		renderedInput,
 	)
 }
 
-func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace) string {
+func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height int) string {
 	var treeRows []string
 
-	maxRows := m.Height - 8
-	startRow := 0
+	availableRows := max(0, height-2)
 
+	startRow := 0
 	totalNodes := len(state.VisibleNodes)
-	if totalNodes > maxRows {
-		bottomThreshold := totalNodes - maxRows
-		if state.CursorIndex <= maxRows/2 {
+
+	if totalNodes > availableRows {
+		bottomThreshold := totalNodes - availableRows
+		if state.CursorIndex <= availableRows/2 {
 			startRow = 0
-		} else if state.CursorIndex >= bottomThreshold+maxRows/2 {
+		} else if state.CursorIndex >= bottomThreshold+availableRows/2 {
 			startRow = bottomThreshold
 		} else {
-			startRow = state.CursorIndex - maxRows/2
+			startRow = state.CursorIndex - availableRows/2
 		}
 	}
 
-	endRow := min(startRow+maxRows, totalNodes)
+	endRow := min(startRow+availableRows, totalNodes)
 
-	treeWidth := m.Width - 45 - 4
-	highlightStyle := m.Styles.TreeHighlight.Width(treeWidth)
+	sidebarWidth := 45
+	treeWidth := max(0, m.Width-sidebarWidth)
+
+	highlightStyle := m.Styles.TreeHighlight.Width(treeWidth - 4)
+	rowStyle := m.Styles.TreeRow.Width(treeWidth - 4)
 
 	for i := startRow; i < endRow; i++ {
 		node := state.VisibleNodes[i]
@@ -155,28 +226,36 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace) string
 		if i == state.CursorIndex {
 			icon := getRawFileIcon(node)
 			checkIcon, _ := getSelectionIcon(node, space, m.Styles)
-
 			lineContent := fmt.Sprintf("%s%s %s %s", indent, checkIcon, icon, node.Name)
-			cursorSymbol := "▶ "
-			fullLine := cursorSymbol + lineContent
 
-			line = highlightStyle.Render(fullLine)
+			// Highlight row
+			line = highlightStyle.Render("▶ " + lineContent)
 		} else {
 			icon := getFileIcon(node, m.Styles)
 			checkIcon, checkStyle := getSelectionIcon(node, space, m.Styles)
 
-			lineContent := fmt.Sprintf("%s%s %s %s", indent, checkIcon, icon, node.Name)
-			styledContent := checkStyle.Render(lineContent)
-			line = "  " + styledContent
+			// Explicitly add background to inner styles to prevent ANSI resets from creating gaps
+			safeCheckStyle := checkStyle.Background(m.Styles.ColorBase)
+			safeIcon := lipgloss.NewStyle().Background(m.Styles.ColorBase).Render(icon)
+
+			lineContent := fmt.Sprintf("%s%s %s %s", indent, checkIcon, safeIcon, node.Name)
+
+			// We render the inner content with its specific style (colors) + Background
+			styledInner := safeCheckStyle.Render(lineContent)
+
+			// Then wrap in rowStyle which enforces the Width
+			line = rowStyle.Render("  " + styledInner)
 		}
 
 		treeRows = append(treeRows, line)
 	}
 
 	mainContent := lipgloss.JoinVertical(lipgloss.Left, treeRows...)
+
 	return m.Styles.Main.
-		Width(m.Width - 45).
-		Height(m.Height - 7).
+		Width(treeWidth).
+		Height(height).
+		Background(m.Styles.ColorBase).
 		Render(mainContent)
 }
 
@@ -202,7 +281,11 @@ func (m AppModel) renderFooter(space *core.DirectorySpace) string {
 	sections = append(sections, m.Styles.StatusRight.Render(rightSection))
 
 	footer := lipgloss.JoinHorizontal(lipgloss.Top, sections...)
-	return lipgloss.NewStyle().Width(m.Width).Render(footer)
+
+	return lipgloss.NewStyle().
+		Width(m.Width).
+		Background(m.Styles.ColorBase).
+		Render(footer)
 }
 
 func (m AppModel) renderHelpView() string {
@@ -251,23 +334,34 @@ func (m AppModel) renderHelpView() string {
 
 	helpBlock := lipgloss.JoinVertical(lipgloss.Left, rows...)
 
-	title := lipgloss.NewStyle().Bold(true).Foreground(m.Styles.ColorMauve).Render(iconHelp + " Keyboard Shortcuts")
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(m.Styles.ColorMauve).
+		Render(iconHelp + " Keyboard Shortcuts")
 
 	boxWidth := min(m.Width-4, maxCols*itemWidth+4)
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.Styles.ColorMauve).
+		Background(m.Styles.ColorSurface).
 		Padding(1, 2).
 		Width(boxWidth).
 		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", helpBlock))
 
-	closeHint := lipgloss.NewStyle().Foreground(m.Styles.ColorSubtext).Italic(true).Render("Press ? to close")
+	closeHint := lipgloss.NewStyle().
+		Foreground(m.Styles.ColorSubtext).
+		Italic(true).
+		Render("Press ? to close")
+
+	content := lipgloss.JoinVertical(lipgloss.Center, box, "", closeHint)
 
 	return lipgloss.Place(
 		m.Width, m.Height,
 		lipgloss.Center, lipgloss.Center,
-		lipgloss.JoinVertical(lipgloss.Center, box, "", closeHint),
+		content,
+		lipgloss.WithWhitespaceBackground(m.Styles.ColorBase),
+		lipgloss.WithWhitespaceChars(" "),
 	)
 }
 
@@ -284,6 +378,7 @@ func (m AppModel) renderNewTabView() string {
 	inputBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.Styles.ColorMauve).
+		Background(m.Styles.ColorSurface).
 		Padding(0, 1).
 		Width(min(m.Width-10, 70)).
 		Render(m.NewTabInput.View())
@@ -307,6 +402,7 @@ func (m AppModel) renderNewTabView() string {
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.Styles.ColorMauve).
+		Background(m.Styles.ColorSurface).
 		Padding(1, 2).
 		Render(content)
 
@@ -314,5 +410,7 @@ func (m AppModel) renderNewTabView() string {
 		m.Width, m.Height,
 		lipgloss.Center, lipgloss.Center,
 		box,
+		lipgloss.WithWhitespaceBackground(m.Styles.ColorBase),
+		lipgloss.WithWhitespaceChars(" "),
 	)
 }

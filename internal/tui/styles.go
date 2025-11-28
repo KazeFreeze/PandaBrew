@@ -69,6 +69,9 @@ type Styles struct {
 	StatusMiddle    lipgloss.Style
 	StatusRight     lipgloss.Style
 	TreeHighlight   lipgloss.Style
+	TreeRow         lipgloss.Style
+	Option          lipgloss.Style // New: Unchecked option
+	OptionSelected  lipgloss.Style // New: Checked option
 	HelpKey         lipgloss.Style
 	HelpDesc        lipgloss.Style
 }
@@ -89,7 +92,7 @@ func DefaultStyles(p ThemePalette) Styles {
 		ColorLavender: p.Lavender,
 	}
 
-	// Tab Styles
+	// Tab Styles - explicitly set background to match theme
 	s.Tab = lipgloss.NewStyle().
 		Padding(0, 2).
 		Foreground(p.Overlay).
@@ -102,31 +105,42 @@ func DefaultStyles(p ThemePalette) Styles {
 		Bold(true)
 
 	// Sidebar Styles
+	// Important: Background is Base to blend with global background
 	s.Sidebar = lipgloss.NewStyle().
 		Width(38).
 		Padding(1, 2).
+		Background(p.Base).
 		Border(lipgloss.RoundedBorder(), false, true, false, false).
-		BorderForeground(p.Mauve)
+		BorderForeground(p.Mauve).
+		BorderBackground(p.Base)
 
 	s.SectionHeader = lipgloss.NewStyle().
 		Foreground(p.Mauve).
+		Background(p.Base).
 		Bold(true).
 		Underline(true).
+		Width(34). // Fix: Force width to match Sidebar content area (38 - 4 padding)
 		MarginBottom(1)
 
 	s.InputLabel = lipgloss.NewStyle().
 		Foreground(p.Blue).
+		Background(p.Base).
 		Bold(true).
 		Width(34)
 
-	s.InputBox = lipgloss.NewStyle()
+	s.InputBox = lipgloss.NewStyle().
+		Background(p.Base)
 
 	s.InputBoxFocused = lipgloss.NewStyle().
-		Foreground(p.Mauve)
+		Foreground(p.Mauve).
+		Background(p.Base)
 
+	// Main Content Area
+	// Important: Background is Base. Padding ensures content doesn't hit edges immediately.
 	s.Main = lipgloss.NewStyle().
 		Padding(1, 2).
-		MarginLeft(1)
+		MarginLeft(1).
+		Background(p.Base)
 
 	// Status Bar Styles
 	s.StatusLeft = lipgloss.NewStyle().
@@ -145,15 +159,37 @@ func DefaultStyles(p ThemePalette) Styles {
 		Background(p.Surface).
 		Padding(0, 2)
 
-	// Tree Highlight (Full Row)
+	// Tree Highlight (Full Row) - uses Surface for contrast against Base
+	// We ensure the highlight also has a background set to avoid gaps
 	s.TreeHighlight = lipgloss.NewStyle().
 		Background(p.Surface).
 		Foreground(p.Mauve).
 		Bold(true)
 
-	// Help Styles
-	s.HelpKey = lipgloss.NewStyle().Foreground(p.Mauve).Bold(true)
-	s.HelpDesc = lipgloss.NewStyle().Foreground(p.Text)
+	// Tree Row (Standard) - uses Base background to fill gaps in file names
+	s.TreeRow = lipgloss.NewStyle().
+		Background(p.Base).
+		Foreground(p.Text) // Explicitly set foreground to prevent partial resets
+
+	// Option Styles (Checkboxes)
+	s.Option = lipgloss.NewStyle().
+		Foreground(p.Subtext).
+		Background(p.Base)
+
+	s.OptionSelected = lipgloss.NewStyle().
+		Foreground(p.Green).
+		Background(p.Base).
+		Bold(true)
+
+	// Help Styles - ensure they work on base background
+	s.HelpKey = lipgloss.NewStyle().
+		Foreground(p.Mauve).
+		Background(p.Base).
+		Bold(true)
+
+	s.HelpDesc = lipgloss.NewStyle().
+		Foreground(p.Text).
+		Background(p.Base)
 
 	return s
 }
