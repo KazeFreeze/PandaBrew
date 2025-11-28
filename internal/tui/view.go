@@ -360,7 +360,7 @@ func (m AppModel) renderHelpView() string {
 		keyText := binding.Help().Key
 		keyStyled := lipgloss.NewStyle().
 			Foreground(m.Styles.ColorMauve).
-			Background(m.Styles.ColorSurface).
+			Background(m.Styles.ColorBase). // Changed to Base
 			Bold(true).
 			Width(14).
 			Render(keyText)
@@ -368,14 +368,14 @@ func (m AppModel) renderHelpView() string {
 		descText := binding.Help().Desc
 		descStyled := lipgloss.NewStyle().
 			Foreground(m.Styles.ColorText).
-			Background(m.Styles.ColorSurface).
+			Background(m.Styles.ColorBase). // Changed to Base
 			Width(22).
 			Render(descText)
 
 		itemContent := lipgloss.JoinHorizontal(lipgloss.Top, keyStyled, descStyled)
 
 		item := lipgloss.NewStyle().
-			Background(m.Styles.ColorSurface).
+			Background(m.Styles.ColorBase). // Changed to Base
 			Width(itemWidth).
 			Render(itemContent)
 
@@ -390,7 +390,7 @@ func (m AppModel) renderHelpView() string {
 
 			if remainingWidth > 0 {
 				filler := lipgloss.NewStyle().
-					Background(m.Styles.ColorSurface).
+					Background(m.Styles.ColorBase). // Changed to Base
 					Width(remainingWidth).
 					Render(" ")
 				row = lipgloss.JoinHorizontal(lipgloss.Top, row, filler)
@@ -410,7 +410,7 @@ func (m AppModel) renderHelpView() string {
 
 		if remainingWidth > 0 {
 			filler := lipgloss.NewStyle().
-				Background(m.Styles.ColorSurface).
+				Background(m.Styles.ColorBase). // Changed to Base
 				Width(remainingWidth).
 				Render(" ")
 			row = lipgloss.JoinHorizontal(lipgloss.Top, row, filler)
@@ -424,13 +424,13 @@ func (m AppModel) renderHelpView() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(m.Styles.ColorMauve).
-		Background(m.Styles.ColorSurface).
+		Background(m.Styles.ColorBase). // Changed to Base
 		Width(maxCols * itemWidth).
 		Align(lipgloss.Center).
 		Render(iconHelp + " Keyboard Shortcuts")
 
 	spacer := lipgloss.NewStyle().
-		Background(m.Styles.ColorSurface).
+		Background(m.Styles.ColorBase). // Changed to Base
 		Width(maxCols * itemWidth).
 		Height(1).
 		Render(" ")
@@ -444,13 +444,12 @@ func (m AppModel) renderHelpView() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.Styles.ColorMauve).
 		BorderBackground(m.Styles.ColorBase).
-		Background(m.Styles.ColorSurface).
+		Background(m.Styles.ColorBase). // Changed to Base
 		Padding(1, 2).
 		Width(boxWidth).
 		Render(content)
 
 	// 2. Measure the ACTUAL rendered width (includes border + padding)
-	// This captures the extra +6 width that was causing the gap
 	totalWidth := lipgloss.Width(box)
 
 	// 3. Apply the TOTAL width to the footer elements
@@ -458,13 +457,13 @@ func (m AppModel) renderHelpView() string {
 		Foreground(m.Styles.ColorSubtext).
 		Background(m.Styles.ColorBase).
 		Italic(true).
-		Width(totalWidth). // Match exact width of the box above
+		Width(totalWidth).
 		Align(lipgloss.Center).
 		Render("Press ? to close")
 
 	spacerBeforeHint := lipgloss.NewStyle().
 		Background(m.Styles.ColorBase).
-		Width(totalWidth). // Match exact width
+		Width(totalWidth).
 		Height(1).
 		Render(" ")
 
@@ -481,34 +480,31 @@ func (m AppModel) renderHelpView() string {
 
 func (m AppModel) renderNewTabView() string {
 	// Calculate dynamic width based on screen size, capped at 60
-	// We force all inner elements to this width (minus padding) to ensure
-	// the background color is painted across the entire row, preventing gaps.
 	modalWidth := min(m.Width-10, 60)
 	contentWidth := modalWidth - 4 // Account for padding (2 on each side)
 
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(m.Styles.ColorMauve).
-		Background(m.Styles.ColorSurface).
+		Background(m.Styles.ColorBase). // Changed to Base
 		Width(contentWidth).
 		Align(lipgloss.Center).
 		Render(iconFolder + " Open New Tab")
 
 	description := lipgloss.NewStyle().
 		Foreground(m.Styles.ColorSubtext).
-		Background(m.Styles.ColorSurface).
+		Background(m.Styles.ColorBase). // Changed to Base
 		Width(contentWidth).
 		Align(lipgloss.Center).
-		MarginTop(1). // Use MarginTop instead of empty string "" to safely spacing
+		MarginTop(1).
 		Render("Enter the full path to a directory:")
 
 	// Input Box
-	// We set the input width to contentWidth - 2 (for the input's own internal border/padding)
 	inputBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.Styles.ColorMauve).
-		BorderBackground(m.Styles.ColorSurface).
-		Background(m.Styles.ColorSurface).
+		BorderBackground(m.Styles.ColorBase). // Changed to Base
+		Background(m.Styles.ColorBase).       // Changed to Base
 		Padding(0, 1).
 		Width(contentWidth - 2). // Ensure it fills the modal
 		MarginTop(1).
@@ -517,7 +513,7 @@ func (m AppModel) renderNewTabView() string {
 	hints := lipgloss.NewStyle().
 		Foreground(m.Styles.ColorSubtext).
 		Italic(true).
-		Background(m.Styles.ColorSurface).
+		Background(m.Styles.ColorBase). // Changed to Base
 		Width(contentWidth).
 		Align(lipgloss.Center).
 		MarginTop(1).
@@ -535,10 +531,10 @@ func (m AppModel) renderNewTabView() string {
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.Styles.ColorMauve).
-		BorderBackground(m.Styles.ColorBase). // Transitions to global bg
-		Background(m.Styles.ColorSurface).
+		BorderBackground(m.Styles.ColorBase).
+		Background(m.Styles.ColorBase). // Changed to Base
 		Padding(1, 2).
-		Width(modalWidth). // Forces background to fill the width
+		Width(modalWidth).
 		Render(content)
 
 	return lipgloss.Place(

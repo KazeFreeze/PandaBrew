@@ -93,14 +93,14 @@ func InitialModel(session *core.Session) AppModel {
 	newTabInput.Placeholder = "Enter directory path..."
 	newTabInput.CharLimit = 200
 	newTabInput.Width = 60
-	// Fix: Set background colors on the NewTabInput
-	newTabInput.TextStyle = lipgloss.NewStyle().Background(styles.ColorSurface)
+	// Fix: Set background colors on the NewTabInput to match Base (same as others)
+	newTabInput.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
 	newTabInput.PlaceholderStyle = lipgloss.NewStyle().
 		Foreground(styles.ColorSubtext).
-		Background(styles.ColorSurface)
+		Background(styles.ColorBase)
 	// CRITICAL FIX: Set cursor TextStyle background to match input background
 	newTabInput.Cursor.Style = lipgloss.NewStyle().Foreground(styles.ColorMauve)
-	newTabInput.Cursor.TextStyle = lipgloss.NewStyle().Background(styles.ColorSurface)
+	newTabInput.Cursor.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
 
 	h := help.New()
 	h.Styles.FullKey = styles.HelpKey
