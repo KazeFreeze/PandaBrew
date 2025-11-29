@@ -7,7 +7,7 @@
 - [ ] add option to extract dir structure only even in include mode
       but take note of redundant and conflicting settings
 - [ ] fix reload should also resync all UIs
-- [ ] fix scrolling: when reaching the bottom, the cursor should no longer be
+- [x] fix scrolling: when reaching the bottom, the cursor should no longer be
       kept centered
 - [ ] fix! even if show excluded, show context are off, it should still show
       the path from root to the file
@@ -15,8 +15,8 @@
       so if folder only on the same level, it should not show others unless there
       is a sibling file that is actually included - rename to show siblings
 - [ ] add capability to rename tabs
-- [ ] add search function to scan those in view
-- [ ] add grep function to look for files not in view
+- [x] add search function to scan those in view
+- [x] add grep function to look for files not in view
 - [ ] modify workflow to not build for chores
 - [ ] add customizable markers (excluded, included, file divisions)
-- [ ] add deselect all and select all shortcut (must be efficient)
+- [x] add deselect all and select all shortcut (must be efficient)
