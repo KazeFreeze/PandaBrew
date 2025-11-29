@@ -407,6 +407,8 @@ func (m AppModel) renderGlobalSearchView() string {
 		space := m.Session.GetActiveSpace()
 		query := m.GlobalSearchInput.Value()
 
+		// Local definition removed, now using global icons from styles.go
+
 		for i := start; i < end; i++ {
 			file := m.GlobalSearchFiles[i]
 			relPath, _ := filepath.Rel(space.RootPath, file)
@@ -429,15 +431,15 @@ func (m AppModel) renderGlobalSearchView() string {
 
 			if isStaged {
 				if isAlreadySelected {
-					// Staged for removal (Red [-])
-					marker = lipgloss.NewStyle().Foreground(m.Styles.ColorRed).Bold(true).Render("[-] ")
+					// Staged for removal (Red Minus Square)
+					marker = lipgloss.NewStyle().Foreground(m.Styles.ColorRed).Bold(true).Render(iconMinusSquare + " ")
 				} else {
-					// Staged for addition (Peach [+])
-					marker = lipgloss.NewStyle().Foreground(m.Styles.ColorPeach).Bold(true).Render("[+] ")
+					// Staged for addition (Peach Plus Square)
+					marker = lipgloss.NewStyle().Foreground(m.Styles.ColorPeach).Bold(true).Render(iconPlusSquare + " ")
 				}
 			} else if isAlreadySelected {
-				// Already selected, not staged (Green [x])
-				marker = lipgloss.NewStyle().Foreground(m.Styles.ColorGreen).Bold(true).Render("[x] ")
+				// Already selected, not staged (Green Check Square)
+				marker = lipgloss.NewStyle().Foreground(m.Styles.ColorGreen).Bold(true).Render(iconCheckSquare + " ")
 			}
 
 			// 3. Get Semantic Icon
@@ -453,11 +455,8 @@ func (m AppModel) renderGlobalSearchView() string {
 			// Note: render separately to preserve distinct foreground colors of marker/icon
 			// while using the row's background color.
 			cursorStr := lipgloss.NewStyle().Background(style.GetBackground()).Foreground(style.GetForeground()).Render(cursor)
-			markerStr := lipgloss.NewStyle().Background(style.GetBackground()).Render(marker) // marker text already has foreground applied in its definition above, but we ensure bg matches row
+			markerStr := lipgloss.NewStyle().Background(style.GetBackground()).Render(marker)
 
-			// Re-rendering marker with background might need care if marker already has styles.
-			// The `marker` string created above (e.g. `lipgloss...Render("[-] ")`) is an ANSI string.
-			// Wrapping it in another style to set background works in Lipgloss.
 			if marker != "" {
 				markerStr = lipgloss.NewStyle().Background(style.GetBackground()).Render(marker)
 			}
@@ -480,7 +479,7 @@ func (m AppModel) renderGlobalSearchView() string {
 				}
 				sb.WriteString(style.Render(relPath[lastIdx:]))
 
-				styledName = prefixStr + sb.String()
+				styledName = lipgloss.NewStyle().Background(style.GetBackground()).Render(prefixStr) + sb.String()
 			} else {
 				styledName = prefixStr + style.Render(displayPath)
 			}

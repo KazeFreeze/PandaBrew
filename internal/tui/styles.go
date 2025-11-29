@@ -28,6 +28,8 @@ const (
 
 	iconCheckSquare = "\uf046" // nf-fa-check_square_o
 	iconSquare      = "\uf096" // nf-fa-square_o
+	iconPlusSquare  = "\uf0fe" // nf-fa-plus_square (Added)
+	iconMinusSquare = "\uf146" // nf-fa-minus_square (Added)
 	iconDot         = "\uf111" // nf-fa-circle (filled)
 	iconCircle      = "\uf10c" // nf-fa-circle_o (outline)
 
@@ -70,8 +72,8 @@ type Styles struct {
 	StatusRight     lipgloss.Style
 	TreeHighlight   lipgloss.Style
 	TreeRow         lipgloss.Style
-	Option          lipgloss.Style // New: Unchecked option
-	OptionSelected  lipgloss.Style // New: Checked option
+	Option          lipgloss.Style
+	OptionSelected  lipgloss.Style
 	HelpKey         lipgloss.Style
 	HelpDesc        lipgloss.Style
 }
