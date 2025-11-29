@@ -270,19 +270,51 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 			Background(rowBgColor).
 			Render(iconChar + " ")
 
-		// 6. Render Name
+		// 6. Render Name with Substring Highlighting
 		nameStyle := lipgloss.NewStyle().
 			Foreground(m.Styles.ColorText).
 			Background(rowBgColor)
 
 		if isSelected {
 			nameStyle = nameStyle.Foreground(m.Styles.ColorMauve).Bold(true)
-		} else if state.SearchQuery != "" && strings.Contains(strings.ToLower(node.Name), strings.ToLower(state.SearchQuery)) {
-			// HIGHLIGHT MATCHES IN TREE
-			nameStyle = nameStyle.Foreground(m.Styles.ColorYellow).Bold(true).Underline(true)
 		}
 
-		styledName := nameStyle.Render(node.Name)
+		var styledName string
+
+		// If there is an active search, perform substring matching and highlighting
+		if state.SearchQuery != "" {
+			// Perform case-insensitive search
+			lowerName := strings.ToLower(node.Name)
+			lowerQuery := strings.ToLower(state.SearchQuery)
+			idx := strings.Index(lowerName, lowerQuery)
+
+			if idx >= 0 {
+				// Define highlight style: Yellow background + Base text (high contrast)
+				// SA1019: nameStyle.Copy is deprecated, use assignment instead.
+				highlightStyle := nameStyle.
+					Background(m.Styles.ColorYellow).
+					Foreground(m.Styles.ColorBase).
+					Bold(true)
+
+				// Calculate indices for slicing the ORIGINAL string
+				start := idx
+				end := idx + len(lowerQuery)
+
+				// Safety check for bounds using min
+				end = min(end, len(node.Name))
+
+				prefix := node.Name[:start]
+				match := node.Name[start:end]
+				suffix := node.Name[end:]
+
+				// Render the three parts individually
+				styledName = nameStyle.Render(prefix) + highlightStyle.Render(match) + nameStyle.Render(suffix)
+			} else {
+				styledName = nameStyle.Render(node.Name)
+			}
+		} else {
+			styledName = nameStyle.Render(node.Name)
+		}
 
 		// 7. Combine all parts
 		leftContent := lipgloss.JoinHorizontal(lipgloss.Top,
