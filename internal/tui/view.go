@@ -4,6 +4,7 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"pandabrew/internal/core"
@@ -414,45 +415,74 @@ func (m AppModel) renderGlobalSearchView() string {
 			style := lipgloss.NewStyle().Foreground(m.Styles.ColorText)
 			cursor := "  "
 
-			// 1. Check if selected for Focus
+			// 1. Check if highlighted (focused)
 			if i == m.GlobalSearchSelect {
 				style = style.Foreground(m.Styles.ColorMauve).Bold(true).Background(m.Styles.ColorSurface)
 				cursor = "➜ "
 			}
 
-			// 2. Check if selected for Multi-Select
-			selectionMarker := ""
-			if m.GlobalSearchSelected[file] {
-				// Add Peach colored (+) marker
-				selectionMarker = lipgloss.NewStyle().Foreground(m.Styles.ColorPeach).Bold(true).Render("[+] ")
+			// 2. Determine State Icon
+			isAlreadySelected := slices.Contains(space.Config.ManualSelections, file)
+			isStaged := m.GlobalSearchSelected[file]
+
+			marker := ""
+
+			if isStaged {
+				if isAlreadySelected {
+					// Staged for removal (Red [-])
+					marker = lipgloss.NewStyle().Foreground(m.Styles.ColorRed).Bold(true).Render("[-] ")
+				} else {
+					// Staged for addition (Peach [+])
+					marker = lipgloss.NewStyle().Foreground(m.Styles.ColorPeach).Bold(true).Render("[+] ")
+				}
+			} else if isAlreadySelected {
+				// Already selected, not staged (Green [x])
+				marker = lipgloss.NewStyle().Foreground(m.Styles.ColorGreen).Bold(true).Render("[x] ")
 			}
 
-			displayPath = cursor + selectionMarker + displayPath
+			// 3. Get Semantic Icon
+			dummyNode := &TreeNode{
+				Name:  filepath.Base(file),
+				IsDir: false, // Global search typically returns files
+			}
+			iconChar, iconStyle := getFileIcon(dummyNode, m.Styles)
+			// Apply the row background to the icon so it blends with selection highlight
+			icon := iconStyle.Background(style.GetBackground()).Render(iconChar + " ")
 
+			// Compose the prefix: Cursor + Marker + Icon
+			// Note: render separately to preserve distinct foreground colors of marker/icon
+			// while using the row's background color.
+			cursorStr := lipgloss.NewStyle().Background(style.GetBackground()).Foreground(style.GetForeground()).Render(cursor)
+			markerStr := lipgloss.NewStyle().Background(style.GetBackground()).Render(marker) // marker text already has foreground applied in its definition above, but we ensure bg matches row
+
+			// Re-rendering marker with background might need care if marker already has styles.
+			// The `marker` string created above (e.g. `lipgloss...Render("[-] ")`) is an ANSI string.
+			// Wrapping it in another style to set background works in Lipgloss.
+			if marker != "" {
+				markerStr = lipgloss.NewStyle().Background(style.GetBackground()).Render(marker)
+			}
+
+			prefixStr := cursorStr + markerStr + icon
+
+			// Render matched text
 			var styledName string
 			if matched, indices := SimpleFuzzyMatch(query, filepath.ToSlash(relPath)); matched && query != "" {
 				var sb strings.Builder
 				lastIdx := 0
 
-				// Fix deprecated Copy by assignment
 				highlightStyle := style
 				highlightStyle = highlightStyle.Foreground(m.Styles.ColorYellow).Bold(true)
 
-				prefixStr := cursor + selectionMarker
-
-				// Re-render matching only on the path part
 				for _, idx := range indices {
-					// Append text before match
 					sb.WriteString(style.Render(relPath[lastIdx:idx]))
-					// Append match with highlight
 					sb.WriteString(highlightStyle.Render(string(relPath[idx])))
 					lastIdx = idx + 1
 				}
 				sb.WriteString(style.Render(relPath[lastIdx:]))
 
-				styledName = lipgloss.NewStyle().Background(style.GetBackground()).Render(prefixStr) + sb.String()
+				styledName = prefixStr + sb.String()
 			} else {
-				styledName = style.Render(displayPath)
+				styledName = prefixStr + style.Render(displayPath)
 			}
 
 			results = append(results, styledName)
