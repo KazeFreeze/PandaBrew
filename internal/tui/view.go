@@ -399,10 +399,7 @@ func (m AppModel) renderGlobalSearchView() string {
 		results = append(results, lipgloss.NewStyle().Foreground(m.Styles.ColorSubtext).Render("No results found."))
 	} else {
 		// Calculate available height for results
-		resultsHeight := modalHeight - 8 // approx height for header/footer
-		if resultsHeight < 1 {
-			resultsHeight = 1
-		}
+		resultsHeight := max(1, modalHeight-8) // approx height for header/footer
 
 		start := 0
 		end := 0
@@ -413,19 +410,13 @@ func (m AppModel) renderGlobalSearchView() string {
 			end = total
 		} else {
 			// Center the selection
-			start = m.GlobalSearchSelect - (resultsHeight / 2)
-			if start < 0 {
-				start = 0
-			}
+			start = max(0, m.GlobalSearchSelect-(resultsHeight/2))
 			end = start + resultsHeight
 
 			// Clamp to bottom
 			if end > total {
 				end = total
-				start = end - resultsHeight
-				if start < 0 {
-					start = 0
-				}
+				start = max(0, end-resultsHeight)
 			}
 		}
 
@@ -437,55 +428,61 @@ func (m AppModel) renderGlobalSearchView() string {
 			relPath, _ := filepath.Rel(space.RootPath, file)
 			displayPath := filepath.ToSlash(relPath)
 
+			// Determine Row Background
+			var rowBg lipgloss.Color
 			style := lipgloss.NewStyle().Foreground(m.Styles.ColorText)
 			cursor := "  "
 
 			if i == m.GlobalSearchSelect {
-				style = style.Foreground(m.Styles.ColorMauve).Bold(true).Background(m.Styles.ColorSurface)
+				rowBg = m.Styles.ColorSurface
+				style = style.Foreground(m.Styles.ColorMauve).Bold(true).Background(rowBg)
 				cursor = "➜ "
+			} else {
+				rowBg = m.Styles.ColorBase
+				style = style.Background(rowBg)
 			}
 
+			// Marker Logic
 			isAlreadySelected := slices.Contains(space.Config.ManualSelections, file)
 			isStaged := m.GlobalSearchSelected[file]
 
 			marker := ""
-
 			if isStaged {
 				if isAlreadySelected {
-					// Staged for removal (Red Minus Square)
+					// Staged for removal
 					marker = lipgloss.NewStyle().Foreground(m.Styles.ColorRed).Bold(true).Render(iconMinusSquare + " ")
 				} else {
-					// Staged for addition (Peach Plus Square)
+					// Staged for addition
 					marker = lipgloss.NewStyle().Foreground(m.Styles.ColorPeach).Bold(true).Render(iconPlusSquare + " ")
 				}
 			} else if isAlreadySelected {
-				// Already selected, not staged (Green Check Square)
+				// Already selected
 				marker = lipgloss.NewStyle().Foreground(m.Styles.ColorGreen).Bold(true).Render(iconCheckSquare + " ")
 			}
 
+			// Icon Logic
 			dummyNode := &TreeNode{
 				Name:  filepath.Base(file),
 				IsDir: false,
 			}
 			iconChar, iconStyle := getFileIcon(dummyNode, m.Styles)
-			icon := iconStyle.Background(style.GetBackground()).Render(iconChar + " ")
+			// Apply row background to icon
+			icon := iconStyle.Background(rowBg).Render(iconChar + " ")
 
-			cursorStr := lipgloss.NewStyle().Background(style.GetBackground()).Foreground(style.GetForeground()).Render(cursor)
-			markerStr := lipgloss.NewStyle().Background(style.GetBackground()).Render(marker)
-
-			if marker != "" {
-				markerStr = lipgloss.NewStyle().Background(style.GetBackground()).Render(marker)
-			}
+			// Render Prefix with Background Propagation
+			cursorStr := lipgloss.NewStyle().Background(rowBg).Foreground(style.GetForeground()).Render(cursor)
+			markerStr := lipgloss.NewStyle().Background(rowBg).Render(marker)
 
 			prefixStr := cursorStr + markerStr + icon
 
+			// Render Path and Highlight Matches
 			var styledName string
 			if matched, indices := SimpleFuzzyMatch(query, filepath.ToSlash(relPath)); matched && query != "" {
 				var sb strings.Builder
 				lastIdx := 0
 
-				highlightStyle := style
-				highlightStyle = highlightStyle.Foreground(m.Styles.ColorYellow).Bold(true)
+				// Highlight style must also have the row background
+				highlightStyle := style.Foreground(m.Styles.ColorYellow).Bold(true).Background(rowBg)
 
 				for _, idx := range indices {
 					sb.WriteString(style.Render(relPath[lastIdx:idx]))
@@ -494,12 +491,20 @@ func (m AppModel) renderGlobalSearchView() string {
 				}
 				sb.WriteString(style.Render(relPath[lastIdx:]))
 
-				styledName = lipgloss.NewStyle().Background(style.GetBackground()).Render(prefixStr) + sb.String()
+				styledName = prefixStr + sb.String()
 			} else {
 				styledName = prefixStr + style.Render(displayPath)
 			}
 
-			results = append(results, styledName)
+			// 3. Fill the remaining width with background color
+			fullRow := styledName
+			currWidth := lipgloss.Width(fullRow)
+			if currWidth < contentWidth {
+				padding := strings.Repeat(" ", max(0, contentWidth-currWidth))
+				fullRow += lipgloss.NewStyle().Background(rowBg).Render(padding)
+			}
+
+			results = append(results, fullRow)
 		}
 	}
 
