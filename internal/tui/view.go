@@ -42,7 +42,7 @@ func (m AppModel) View() string {
 
 		// A. Render Header and Footer first to measure their height
 		tabs := m.renderTabs()
-		footer := m.renderFooter(space)
+		footer := m.renderFooter(space, state)
 
 		headerHeight := lipgloss.Height(tabs)
 		footerHeight := lipgloss.Height(footer)
@@ -277,6 +277,9 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 
 		if isSelected {
 			nameStyle = nameStyle.Foreground(m.Styles.ColorMauve).Bold(true)
+		} else if state.SearchQuery != "" && strings.Contains(strings.ToLower(node.Name), strings.ToLower(state.SearchQuery)) {
+			// HIGHLIGHT MATCHES IN TREE
+			nameStyle = nameStyle.Foreground(m.Styles.ColorYellow).Bold(true).Underline(true)
 		}
 
 		styledName := nameStyle.Render(node.Name)
@@ -313,7 +316,25 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 		Render(mainContent)
 }
 
-func (m AppModel) renderFooter(space *core.DirectorySpace) string {
+func (m AppModel) renderFooter(space *core.DirectorySpace, state *TabState) string {
+	// If Search is Active (Input Focused), render Search Bar instead of status
+	if state.ActiveInput == 5 {
+		searchLabel := lipgloss.NewStyle().
+			Foreground(m.Styles.ColorBase).
+			Background(m.Styles.ColorYellow).
+			Bold(true).
+			Padding(0, 1).
+			Render("SEARCH /")
+
+		searchInput := lipgloss.NewStyle().
+			Background(m.Styles.ColorSurface).
+			Padding(0, 1).
+			Width(m.Width - lipgloss.Width(searchLabel)).
+			Render(state.InputSearch.View())
+
+		return lipgloss.JoinHorizontal(lipgloss.Top, searchLabel, searchInput)
+	}
+
 	var sections []string
 
 	var leftSection string
@@ -330,7 +351,7 @@ func (m AppModel) renderFooter(space *core.DirectorySpace) string {
 	middleSection := fmt.Sprintf("%s %d selected", iconCheckSquare, len(space.Config.ManualSelections))
 	sections = append(sections, m.Styles.StatusMiddle.Render(middleSection))
 
-	rightSection := fmt.Sprintf("%s help • %s save • %s export • %s theme • q quit",
+	rightSection := fmt.Sprintf("%s help • %s save • %s export • %s theme • / search • q quit",
 		iconHelp, iconSave, iconExport, iconGear)
 	sections = append(sections, m.Styles.StatusRight.Render(rightSection))
 

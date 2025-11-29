@@ -28,7 +28,12 @@ type keyMap struct {
 	Refresh     key.Binding
 	SelectAll   key.Binding
 	DeselectAll key.Binding
-	ToggleTheme key.Binding // Added
+	ToggleTheme key.Binding
+	// Search Bindings
+	Search      key.Binding
+	NextMatch   key.Binding
+	PrevMatch   key.Binding
+	ClearSearch key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -39,10 +44,11 @@ func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Left, k.Right},
 		{k.Select, k.Tab, k.NewTab, k.CloseTab},
+		{k.Search, k.NextMatch, k.PrevMatch, k.ClearSearch}, // Added Search row
 		{k.Save, k.Export, k.Root, k.Output},
 		{k.Include, k.Exclude, k.Refresh},
 		{k.ToggleI, k.ToggleC, k.ToggleX, k.ToggleV},
-		{k.ToggleTheme, k.Help, k.Quit}, // Added ToggleTheme here
+		{k.ToggleTheme, k.Help, k.Quit},
 	}
 }
 
@@ -142,5 +148,22 @@ var keys = keyMap{
 	ToggleTheme: key.NewBinding(
 		key.WithKeys("ctrl+t"),
 		key.WithHelp("ctrl+t", "switch theme"),
+	),
+	// Search Implementation
+	Search: key.NewBinding(
+		key.WithKeys("/"),
+		key.WithHelp("/", "search"),
+	),
+	NextMatch: key.NewBinding(
+		key.WithKeys("n"),
+		key.WithHelp("n", "next match"),
+	),
+	PrevMatch: key.NewBinding(
+		key.WithKeys("N"),
+		key.WithHelp("N", "prev match"),
+	),
+	ClearSearch: key.NewBinding(
+		key.WithKeys("esc"),
+		key.WithHelp("esc", "clear/cancel"),
 	),
 }

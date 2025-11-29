@@ -80,18 +80,21 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	// Handle Regular Inputs
+	// Handle Regular Inputs (including Search - ActiveInput 5)
 	if state != nil && state.ActiveInput > 0 {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
 			case "esc":
 				state.ActiveInput = 0
+				state.InputSearch.SetValue("") // Clear search input on cancel
 				blurAll(state)
 				return m, nil
 			case "enter":
 				state.ActiveInput = 0
 				blurAll(state)
+
+				// Handle Config Inputs
 				if state.InputRoot.Value() != space.RootPath {
 					space.RootPath = state.InputRoot.Value()
 					state.TreeRoot = &TreeNode{
@@ -108,6 +111,21 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				space.Config.IncludePatterns = splitClean(state.InputInclude.Value())
 				space.Config.ExcludePatterns = splitClean(state.InputExclude.Value())
 
+				// Handle Search Input Confirmation
+				if state.InputSearch.Value() != "" {
+					state.SearchQuery = state.InputSearch.Value()
+					state.PerformSearch()
+					if len(state.MatchIndices) > 0 {
+						state.CursorIndex = state.MatchIndices[0]
+						state.MatchPtr = 0
+						m.StatusMessage = fmt.Sprintf("Found %d matches", len(state.MatchIndices))
+					} else {
+						m.StatusMessage = "No matches found"
+					}
+					// Keep search query but clear input box logic for cleaner UI next time?
+					// No, keep value so user can edit it.
+				}
+
 				sm := core.NewSessionManager("")
 				_ = sm.Save(m.Session)
 				return m, tea.Batch(cmds...)
@@ -123,6 +141,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			state.InputInclude, cmd = state.InputInclude.Update(msg)
 		case 4:
 			state.InputExclude, cmd = state.InputExclude.Update(msg)
+		case 5:
+			state.InputSearch, cmd = state.InputSearch.Update(msg)
 		}
 		return m, cmd
 	}
@@ -231,6 +251,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				updateInputStyle(&ts.InputOutput, m.Styles)
 				updateInputStyle(&ts.InputInclude, m.Styles)
 				updateInputStyle(&ts.InputExclude, m.Styles)
+				updateInputStyle(&ts.InputSearch, m.Styles) // Update Search Input
 			}
 
 			sm := core.NewSessionManager("")
@@ -244,6 +265,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			sm := core.NewSessionManager("")
 			_ = sm.Save(m.Session)
 			return m, tea.Quit
+
+		case key.Matches(msg, m.keys.ClearSearch):
+			if state != nil {
+				// Escape clears search logic
+				if state.SearchQuery != "" {
+					state.SearchQuery = ""
+					state.MatchIndices = []int{}
+					state.InputSearch.SetValue("")
+					m.StatusMessage = "Search cleared"
+				}
+			}
 
 		case key.Matches(msg, m.keys.SelectAll):
 			if space != nil {
@@ -344,6 +376,32 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				focusInput(state, 4)
 			}
 			return m, textinput.Blink
+
+		// Search Trigger
+		case key.Matches(msg, m.keys.Search):
+			if state != nil {
+				focusInput(state, 5) // 5 = Search
+			}
+			return m, textinput.Blink
+
+		// Search Navigation
+		case key.Matches(msg, m.keys.NextMatch):
+			if state != nil && len(state.MatchIndices) > 0 {
+				state.MatchPtr++
+				if state.MatchPtr >= len(state.MatchIndices) {
+					state.MatchPtr = 0
+				}
+				state.CursorIndex = state.MatchIndices[state.MatchPtr]
+			}
+
+		case key.Matches(msg, m.keys.PrevMatch):
+			if state != nil && len(state.MatchIndices) > 0 {
+				state.MatchPtr--
+				if state.MatchPtr < 0 {
+					state.MatchPtr = len(state.MatchIndices) - 1
+				}
+				state.CursorIndex = state.MatchIndices[state.MatchPtr]
+			}
 
 		case key.Matches(msg, m.keys.ToggleI):
 			if space != nil {

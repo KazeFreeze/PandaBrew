@@ -45,6 +45,12 @@ type TabState struct {
 	VisibleNodes []*TreeNode
 	CursorIndex  int
 
+	// Search State
+	InputSearch  textinput.Model
+	SearchQuery  string
+	MatchIndices []int // Indices of VisibleNodes that match
+	MatchPtr     int   // Current index within MatchIndices
+
 	// State Restoration Targets
 	TargetExpandedPaths map[string]bool
 	TargetCursorPath    string
@@ -55,7 +61,7 @@ type TabState struct {
 	InputInclude textinput.Model
 	InputExclude textinput.Model
 
-	ActiveInput int // 0=None, 1=Root, 2=Output, 3=Include, 4=Exclude
+	ActiveInput int // 0=None, 1=Root, 2=Output, 3=Include, 4=Exclude, 5=Search
 }
 
 // TreeNode represents the VISUAL state of a file.
@@ -93,12 +99,10 @@ func InitialModel(session *core.Session) AppModel {
 	newTabInput.Placeholder = "Enter directory path..."
 	newTabInput.CharLimit = 200
 	newTabInput.Width = 60
-	// Fix: Set background colors on the NewTabInput to match Base (same as others)
 	newTabInput.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
 	newTabInput.PlaceholderStyle = lipgloss.NewStyle().
 		Foreground(styles.ColorSubtext).
 		Background(styles.ColorBase)
-	// CRITICAL FIX: Set cursor TextStyle background to match input background
 	newTabInput.Cursor.Style = lipgloss.NewStyle().Foreground(styles.ColorMauve)
 	newTabInput.Cursor.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
 
@@ -146,11 +150,22 @@ func newTabState(space *core.DirectorySpace, styles Styles) *TabState {
 		return t
 	}
 
+	// Search Input
+	searchInput := textinput.New()
+	searchInput.Placeholder = "Search..."
+	searchInput.CharLimit = 50
+	searchInput.Width = 20
+	searchInput.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
+	searchInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(styles.ColorSubtext).Background(styles.ColorBase)
+	searchInput.Cursor.Style = lipgloss.NewStyle().Foreground(styles.ColorMauve)
+	searchInput.Cursor.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
+
 	ts := &TabState{
 		InputRoot:           newInput("Root Directory", space.RootPath),
 		InputOutput:         newInput("Output File", space.OutputFilePath),
 		InputInclude:        newInput("*.go, src/", strings.Join(space.Config.IncludePatterns, ", ")),
 		InputExclude:        newInput(".git, node_modules", strings.Join(space.Config.ExcludePatterns, ", ")),
+		InputSearch:         searchInput,
 		CursorIndex:         0,
 		TargetExpandedPaths: make(map[string]bool),
 		TargetCursorPath:    space.CursorPath,
@@ -200,5 +215,30 @@ func (ts *TabState) rebuildVisibleList() {
 	}
 	if ts.CursorIndex < 0 {
 		ts.CursorIndex = 0
+	}
+
+	// Refresh search on tree update
+	if ts.SearchQuery != "" {
+		ts.PerformSearch()
+	}
+}
+
+// PerformSearch recalculates matches based on current VisibleNodes
+func (ts *TabState) PerformSearch() {
+	ts.MatchIndices = []int{}
+	if ts.SearchQuery == "" {
+		return
+	}
+
+	query := strings.ToLower(ts.SearchQuery)
+	for i, node := range ts.VisibleNodes {
+		if strings.Contains(strings.ToLower(node.Name), query) {
+			ts.MatchIndices = append(ts.MatchIndices, i)
+		}
+	}
+
+	// Reset ptr if out of bounds (though usually we try to jump to nearest)
+	if ts.MatchPtr >= len(ts.MatchIndices) {
+		ts.MatchPtr = 0
 	}
 }

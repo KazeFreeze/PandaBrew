@@ -226,6 +226,8 @@ func focusInput(state *TabState, idx int) {
 		state.InputInclude.Focus()
 	case 4:
 		state.InputExclude.Focus()
+	case 5:
+		state.InputSearch.Focus()
 	}
 }
 
@@ -234,6 +236,7 @@ func blurAll(state *TabState) {
 	state.InputOutput.Blur()
 	state.InputInclude.Blur()
 	state.InputExclude.Blur()
+	state.InputSearch.Blur()
 }
 
 func splitClean(s string) []string {
