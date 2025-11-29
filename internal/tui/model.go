@@ -31,11 +31,12 @@ type AppModel struct {
 	ShowNewTab bool
 
 	// Global Search State
-	ShowGlobalSearch   bool
-	GlobalSearchInput  textinput.Model
-	GlobalSearchCache  map[string][]string // Cache files per root path
-	GlobalSearchFiles  []string            // Currently filtered files
-	GlobalSearchSelect int                 // Selected index in the filtered list
+	ShowGlobalSearch     bool
+	GlobalSearchInput    textinput.Model
+	GlobalSearchCache    map[string][]string // Cache files per root path
+	GlobalSearchFiles    []string            // Currently filtered files
+	GlobalSearchSelect   int                 // Selected index in the filtered list
+	GlobalSearchSelected map[string]bool     // Multi-select state (path -> isSelected)
 
 	NewTabInput     textinput.Model
 	StatusMessage   string
@@ -44,7 +45,7 @@ type AppModel struct {
 	ExportProgress  float64
 	ExportTotal     int
 	ExportProcessed int
-	Styles          Styles // Added: Store global styles
+	Styles          Styles
 }
 
 // TabState holds the UI state for a specific directory space (tab).
@@ -56,8 +57,8 @@ type TabState struct {
 	// Search State
 	InputSearch  textinput.Model
 	SearchQuery  string
-	MatchIndices []int // Indices of VisibleNodes that match
-	MatchPtr     int   // Current index within MatchIndices
+	MatchIndices []int
+	MatchPtr     int
 
 	// State Restoration Targets
 	TargetExpandedPaths map[string]bool
@@ -69,7 +70,7 @@ type TabState struct {
 	InputInclude textinput.Model
 	InputExclude textinput.Model
 
-	ActiveInput int // 0=None, 1=Root, 2=Output, 3=Include, 4=Exclude, 5=Search
+	ActiveInput int
 }
 
 // TreeNode represents the VISUAL state of a file.
@@ -80,12 +81,11 @@ type TreeNode struct {
 	Expanded bool
 	Children []*TreeNode
 	Parent   *TreeNode
-	IsLast   bool // For tree rendering
+	IsLast   bool
 }
 
 // --- Init ---
 
-// InitialModel creates the starting state of the TUI.
 func InitialModel(session *core.Session) AppModel {
 	if session.Theme == "" {
 		session.Theme = "mocha"
@@ -133,19 +133,19 @@ func InitialModel(session *core.Session) AppModel {
 	h.Styles.ShortDesc = styles.HelpDesc
 
 	model := AppModel{
-		Session:           session,
-		TabStates:         make(map[string]*TabState),
-		Spinner:           s,
-		Progress:          prog,
-		Help:              h,
-		NewTabInput:       newTabInput,
-		GlobalSearchInput: globalSearchInput,
-		GlobalSearchCache: make(map[string][]string),
-		keys:              keys,
-		Styles:            styles,
+		Session:              session,
+		TabStates:            make(map[string]*TabState),
+		Spinner:              s,
+		Progress:             prog,
+		Help:                 h,
+		NewTabInput:          newTabInput,
+		GlobalSearchInput:    globalSearchInput,
+		GlobalSearchCache:    make(map[string][]string),
+		GlobalSearchSelected: make(map[string]bool),
+		keys:                 keys,
+		Styles:               styles,
 	}
 
-	// Initialize tab states with styles
 	for _, space := range session.Spaces {
 		model.TabStates[space.ID] = newTabState(space, styles)
 	}
@@ -153,26 +153,22 @@ func InitialModel(session *core.Session) AppModel {
 	return model
 }
 
-// Updated to accept styles parameter
 func newTabState(space *core.DirectorySpace, styles Styles) *TabState {
 	newInput := func(placeholder, value string) textinput.Model {
 		t := textinput.New()
 		t.Placeholder = placeholder
 		t.SetValue(value)
 		t.CharLimit = 150
-		t.Width = 34 // Match the container width
-		// Fix: Set background colors for all inputs
+		t.Width = 34
 		t.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
 		t.PlaceholderStyle = lipgloss.NewStyle().
 			Foreground(styles.ColorSubtext).
 			Background(styles.ColorBase)
-		// CRITICAL FIX: Set cursor TextStyle background to match input background
 		t.Cursor.Style = lipgloss.NewStyle().Foreground(styles.ColorMauve)
 		t.Cursor.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
 		return t
 	}
 
-	// Search Input
 	searchInput := textinput.New()
 	searchInput.Placeholder = "Search..."
 	searchInput.CharLimit = 50
@@ -239,13 +235,11 @@ func (ts *TabState) rebuildVisibleList() {
 		ts.CursorIndex = 0
 	}
 
-	// Refresh search on tree update
 	if ts.SearchQuery != "" {
 		ts.PerformSearch()
 	}
 }
 
-// PerformSearch recalculates matches based on current VisibleNodes
 func (ts *TabState) PerformSearch() {
 	ts.MatchIndices = []int{}
 	if ts.SearchQuery == "" {
@@ -259,7 +253,6 @@ func (ts *TabState) PerformSearch() {
 		}
 	}
 
-	// Reset ptr if out of bounds (though usually we try to jump to nearest)
 	if ts.MatchPtr >= len(ts.MatchIndices) {
 		ts.MatchPtr = 0
 	}

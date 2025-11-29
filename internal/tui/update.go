@@ -58,7 +58,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AllFilesLoadedMsg:
 		m.GlobalSearchCache[msg.RootPath] = msg.Files
 		m.GlobalSearchFiles = msg.Files // Initial show all (or could be empty)
-		// Re-filter if there is existing input
 		if m.GlobalSearchInput.Value() != "" {
 			m.filterGlobalSearch()
 		}
@@ -100,6 +99,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ShowGlobalSearch = false
 				m.GlobalSearchInput.Blur()
 				m.GlobalSearchInput.SetValue("")
+				// Clear selections on cancel
+				m.GlobalSearchSelected = make(map[string]bool)
 				return m, nil
 			case "up", "ctrl+k":
 				if m.GlobalSearchSelect > 0 {
@@ -109,26 +110,76 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.GlobalSearchSelect < len(m.GlobalSearchFiles)-1 {
 					m.GlobalSearchSelect++
 				}
-			case "enter":
+
+			// MULTI-SELECT TRIGGER (LazyVim style: Tab toggles and moves down)
+			case "tab":
 				if len(m.GlobalSearchFiles) > 0 && m.GlobalSearchSelect < len(m.GlobalSearchFiles) {
-					selectedPath := m.GlobalSearchFiles[m.GlobalSearchSelect]
-					m.ShowGlobalSearch = false
-					m.GlobalSearchInput.Blur()
+					currentFile := m.GlobalSearchFiles[m.GlobalSearchSelect]
+					if m.GlobalSearchSelected[currentFile] {
+						delete(m.GlobalSearchSelected, currentFile)
+					} else {
+						m.GlobalSearchSelected[currentFile] = true
+					}
+					// Move down automatically for smooth selection flow
+					if m.GlobalSearchSelect < len(m.GlobalSearchFiles)-1 {
+						m.GlobalSearchSelect++
+					}
+				}
+				return m, nil
 
-					// JUMP LOGIC
+			// MULTI-SELECT BACKWARD (Shift+Tab: Tab toggles and moves up)
+			case "shift+tab":
+				if len(m.GlobalSearchFiles) > 0 && m.GlobalSearchSelect < len(m.GlobalSearchFiles) {
+					currentFile := m.GlobalSearchFiles[m.GlobalSearchSelect]
+					if m.GlobalSearchSelected[currentFile] {
+						delete(m.GlobalSearchSelected, currentFile)
+					} else {
+						m.GlobalSearchSelected[currentFile] = true
+					}
+					// Move UP automatically
+					if m.GlobalSearchSelect > 0 {
+						m.GlobalSearchSelect--
+					}
+				}
+				return m, nil
+
+			case "enter":
+				m.ShowGlobalSearch = false
+				m.GlobalSearchInput.Blur()
+
+				// BATCH SELECTION LOGIC
+				if len(m.GlobalSearchSelected) > 0 {
+					// Apply all marked files
+					count := 0
+					for path := range m.GlobalSearchSelected {
+						toggleSelection(space, path)
+						count++
+					}
+					m.StatusMessage = fmt.Sprintf("Toggled %d files from search", count)
+					sm := core.NewSessionManager("")
+					_ = sm.Save(m.Session)
+
+					// Force refresh to update checkboxes in tree
 					if state != nil {
-						// 1. Set the target cursor path
-						state.TargetCursorPath = selectedPath
+						cmds = append(cmds, loadDirectoryCmd(space.RootPath))
+					}
 
-						// 2. Add all parents to ExpandedPaths
+					// Clear map
+					m.GlobalSearchSelected = make(map[string]bool)
+
+				} else if len(m.GlobalSearchFiles) > 0 && m.GlobalSearchSelect < len(m.GlobalSearchFiles) {
+					// SINGLE SELECTION (JUMP) LOGIC
+					selectedPath := m.GlobalSearchFiles[m.GlobalSearchSelect]
+
+					if state != nil {
+						state.TargetCursorPath = selectedPath
 						parent := filepath.Dir(selectedPath)
 						for parent != space.RootPath && len(parent) > len(space.RootPath) {
 							state.TargetExpandedPaths[parent] = true
 							parent = filepath.Dir(parent)
 						}
-						state.TargetExpandedPaths[space.RootPath] = true // Ensure root is expanded
+						state.TargetExpandedPaths[space.RootPath] = true
 
-						// 3. Trigger reload to expand missing nodes
 						m.StatusMessage = fmt.Sprintf("Jumping to %s...", filepath.Base(selectedPath))
 						m.Loading = true
 						cmds = append(cmds, loadDirectoryCmd(space.RootPath))
@@ -142,26 +193,25 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.GlobalSearchInput, cmd = m.GlobalSearchInput.Update(msg)
 		if m.GlobalSearchInput.Value() != oldValue {
 			m.filterGlobalSearch()
-			m.GlobalSearchSelect = 0 // Reset selection on typing
+			m.GlobalSearchSelect = 0
 		}
 		return m, cmd
 	}
 
-	// Handle Regular Inputs (including Search - ActiveInput 5)
+	// Handle Regular Inputs
 	if state != nil && state.ActiveInput > 0 {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
 			case "esc":
 				state.ActiveInput = 0
-				state.InputSearch.SetValue("") // Clear search input on cancel
+				state.InputSearch.SetValue("")
 				blurAll(state)
 				return m, nil
 			case "enter":
 				state.ActiveInput = 0
 				blurAll(state)
 
-				// Handle Config Inputs
 				if state.InputRoot.Value() != space.RootPath {
 					space.RootPath = state.InputRoot.Value()
 					state.TreeRoot = &TreeNode{
@@ -178,7 +228,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				space.Config.IncludePatterns = splitClean(state.InputInclude.Value())
 				space.Config.ExcludePatterns = splitClean(state.InputExclude.Value())
 
-				// Handle Search Input Confirmation
 				if state.InputSearch.Value() != "" {
 					state.SearchQuery = state.InputSearch.Value()
 					state.PerformSearch()
@@ -295,7 +344,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch {
-		// Restore ToggleTheme logic with dynamic input styling
 		case key.Matches(msg, m.keys.ToggleTheme):
 			nextTheme := GetNextTheme(m.Session.Theme)
 			m.Session.Theme = nextTheme
@@ -309,9 +357,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Help.Styles.ShortDesc = m.Styles.HelpDesc
 			m.Spinner.Style = lipgloss.NewStyle().Foreground(m.Styles.ColorMauve)
 
-			// Fix: Dynamically update all text inputs to use the new theme's background color
 			updateInputStyle(&m.NewTabInput, m.Styles)
-			updateInputStyle(&m.GlobalSearchInput, m.Styles) // Update Global Search
+			updateInputStyle(&m.GlobalSearchInput, m.Styles)
 			for _, ts := range m.TabStates {
 				updateInputStyle(&ts.InputRoot, m.Styles)
 				updateInputStyle(&ts.InputOutput, m.Styles)
@@ -334,7 +381,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.ClearSearch):
 			if state != nil {
-				// Escape clears search logic
 				if state.SearchQuery != "" {
 					state.SearchQuery = ""
 					state.MatchIndices = []int{}
@@ -379,23 +425,21 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.NewTabInput.Focus()
 			return m, textinput.Blink
 
-		// GLOBAL SEARCH TRIGGER
 		case key.Matches(msg, m.keys.GlobalSearch):
 			if space != nil {
 				m.ShowGlobalSearch = true
 				m.GlobalSearchInput.Focus()
+				// Reset selections on new search
+				m.GlobalSearchSelected = make(map[string]bool)
 
-				// Check if we have cache for this root
 				if cached, ok := m.GlobalSearchCache[space.RootPath]; ok {
 					m.GlobalSearchFiles = cached
-					m.filterGlobalSearch() // Filter against any existing input
+					m.filterGlobalSearch()
 				} else {
-					// Trigger background scan
 					m.GlobalSearchFiles = []string{}
 					m.StatusMessage = "Indexing files..."
 					cmds = append(cmds, findAllFilesCmd(space.RootPath))
 				}
-				// Fix: Return cmds here properly
 				return m, tea.Batch(append(cmds, textinput.Blink)...)
 			}
 
@@ -463,14 +507,12 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, textinput.Blink
 
-		// Search Trigger
 		case key.Matches(msg, m.keys.Search):
 			if state != nil {
-				focusInput(state, 5) // 5 = Search
+				focusInput(state, 5)
 			}
 			return m, textinput.Blink
 
-		// Search Navigation
 		case key.Matches(msg, m.keys.NextMatch):
 			if state != nil && len(state.MatchIndices) > 0 {
 				state.MatchPtr++
@@ -595,7 +637,7 @@ func (m *AppModel) filterGlobalSearch() {
 	query := m.GlobalSearchInput.Value()
 
 	if query == "" {
-		limit := min(100, len(allFiles)) // Modernized using min
+		limit := min(100, len(allFiles))
 		m.GlobalSearchFiles = allFiles[:limit]
 		return
 	}
@@ -605,9 +647,7 @@ func (m *AppModel) filterGlobalSearch() {
 	limit := 50
 
 	for _, file := range allFiles {
-		// Use relative path for matching
 		relPath, _ := filepath.Rel(space.RootPath, file)
-		// Fix: Normalize to forward slashes for matching on Windows
 		normalizedRelPath := filepath.ToSlash(relPath)
 
 		if matched, _ := SimpleFuzzyMatch(query, normalizedRelPath); matched {

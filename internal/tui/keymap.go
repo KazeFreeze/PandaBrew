@@ -35,7 +35,9 @@ type keyMap struct {
 	PrevMatch   key.Binding
 	ClearSearch key.Binding
 	// Global Search (Fuzzy Finder)
-	GlobalSearch key.Binding
+	GlobalSearch     key.Binding
+	GlobalSelect     key.Binding // Tab
+	GlobalSelectBack key.Binding // Shift+Tab
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -47,7 +49,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 		{k.Up, k.Down, k.Left, k.Right},
 		{k.Select, k.Tab, k.NewTab, k.CloseTab},
 		{k.Search, k.NextMatch, k.PrevMatch, k.ClearSearch},
-		{k.GlobalSearch, k.Save, k.Export}, // Added GlobalSearch
+		{k.GlobalSearch, k.GlobalSelect, k.Save, k.Export},
 		{k.Root, k.Output, k.Include, k.Exclude},
 		{k.ToggleI, k.ToggleC, k.ToggleX, k.ToggleV},
 		{k.Refresh, k.SelectAll, k.DeselectAll},
@@ -171,5 +173,13 @@ var keys = keyMap{
 	GlobalSearch: key.NewBinding(
 		key.WithKeys("ctrl+p"),
 		key.WithHelp("ctrl+p", "global search"),
+	),
+	GlobalSelect: key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "mark file (down)"),
+	),
+	GlobalSelectBack: key.NewBinding(
+		key.WithKeys("shift+tab"),
+		key.WithHelp("shift+tab", "mark file (up)"),
 	),
 }

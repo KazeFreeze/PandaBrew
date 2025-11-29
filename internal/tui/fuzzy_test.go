@@ -3,6 +3,8 @@ package tui
 import (
 	"reflect"
 	"testing"
+
+	"pandabrew/internal/core"
 )
 
 func TestSimpleFuzzyMatch(t *testing.T) {
@@ -43,6 +45,73 @@ func TestSimpleFuzzyMatch(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestToggleSelection(t *testing.T) {
+	// Setup a dummy space without referencing undefined types
+	space := &core.DirectorySpace{}
+	// Initialize the map/slice directly on the struct field
+	space.Config.ManualSelections = []string{}
+
+	// 1. Test adding selection
+	path1 := "/path/to/file1.go"
+	toggleSelection(space, path1)
+	if len(space.Config.ManualSelections) != 1 {
+		t.Errorf("Expected 1 selection, got %d", len(space.Config.ManualSelections))
+	}
+	if space.Config.ManualSelections[0] != path1 {
+		t.Errorf("Expected selection %s, got %s", path1, space.Config.ManualSelections[0])
+	}
+
+	// 2. Test removing selection (toggling off)
+	toggleSelection(space, path1)
+	if len(space.Config.ManualSelections) != 0 {
+		t.Errorf("Expected 0 selections after toggle off, got %d", len(space.Config.ManualSelections))
+	}
+
+	// 3. Test adding multiple unique
+	path2 := "/path/to/file2.go"
+	toggleSelection(space, path1)
+	toggleSelection(space, path2)
+	if len(space.Config.ManualSelections) != 2 {
+		t.Errorf("Expected 2 selections, got %d", len(space.Config.ManualSelections))
+	}
+}
+
+func TestBatchSelectionLogic(t *testing.T) {
+	// Setup dummy space
+	space := &core.DirectorySpace{}
+	space.Config.ManualSelections = []string{"/file/c", "/file/d"}
+
+	// Simulate the GlobalSearchSelected map from the model
+	batchSelections := map[string]bool{
+		"/file/a": true,
+		"/file/b": true,
+		"/file/c": true,
+	}
+
+	// Run batch logic as implemented in Update
+	for path := range batchSelections {
+		toggleSelection(space, path)
+	}
+
+	// Verify Results
+	// Expected: /file/d (touched), /file/a (added), /file/b (added), /file/c (removed)
+	expectedMap := map[string]bool{
+		"/file/d": true,
+		"/file/a": true,
+		"/file/b": true,
+	}
+
+	if len(space.Config.ManualSelections) != 3 {
+		t.Errorf("Expected 3 final selections, got %d: %v", len(space.Config.ManualSelections), space.Config.ManualSelections)
+	}
+
+	for _, s := range space.Config.ManualSelections {
+		if !expectedMap[s] {
+			t.Errorf("Unexpected selection found: %s", s)
+		}
 	}
 }
 
