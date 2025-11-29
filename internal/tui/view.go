@@ -280,6 +280,7 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 		}
 
 		var styledName string
+		var matchCounter string
 
 		// If there is an active search, perform substring matching and highlighting
 		if state.SearchQuery != "" {
@@ -290,7 +291,6 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 
 			if idx >= 0 {
 				// Define highlight style: Yellow background + Base text (high contrast)
-				// SA1019: nameStyle.Copy is deprecated, use assignment instead.
 				highlightStyle := nameStyle.
 					Background(m.Styles.ColorYellow).
 					Foreground(m.Styles.ColorBase).
@@ -309,6 +309,16 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 
 				// Render the three parts individually
 				styledName = nameStyle.Render(prefix) + highlightStyle.Render(match) + nameStyle.Render(suffix)
+
+				// Calculate Match Counter (n/Total)
+				for mIdx, matchedNodeIdx := range state.MatchIndices {
+					if matchedNodeIdx == i {
+						// Found the current node in the match list
+						matchCounter = fmt.Sprintf(" (%d/%d)", mIdx+1, len(state.MatchIndices))
+						break
+					}
+				}
+
 			} else {
 				styledName = nameStyle.Render(node.Name)
 			}
@@ -316,16 +326,26 @@ func (m AppModel) renderTree(state *TabState, space *core.DirectorySpace, height
 			styledName = nameStyle.Render(node.Name)
 		}
 
-		// 7. Combine all parts
+		// 7. Render Match Counter if it exists
+		var styledMatchCounter string
+		if matchCounter != "" {
+			styledMatchCounter = lipgloss.NewStyle().
+				Foreground(m.Styles.ColorPeach). // Changed from Subtext to Peach
+				Background(rowBgColor).
+				Render(matchCounter)
+		}
+
+		// 8. Combine all parts
 		leftContent := lipgloss.JoinHorizontal(lipgloss.Top,
 			leftPad,
 			styledIndent,
 			styledCheck,
 			styledIcon,
 			styledName,
+			styledMatchCounter, // Added counter here
 		)
 
-		// 8. Fill the remaining width
+		// 9. Fill the remaining width
 		currentWidth := lipgloss.Width(leftContent)
 		fillWidth := max(0, contentWidth-currentWidth)
 
