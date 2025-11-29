@@ -105,10 +105,16 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "up", "ctrl+k":
 				if m.GlobalSearchSelect > 0 {
 					m.GlobalSearchSelect--
+				} else if len(m.GlobalSearchFiles) > 0 {
+					// Loop to bottom
+					m.GlobalSearchSelect = len(m.GlobalSearchFiles) - 1
 				}
 			case "down", "ctrl+j":
 				if m.GlobalSearchSelect < len(m.GlobalSearchFiles)-1 {
 					m.GlobalSearchSelect++
+				} else if len(m.GlobalSearchFiles) > 0 {
+					// Loop to top
+					m.GlobalSearchSelect = 0
 				}
 
 			// MULTI-SELECT TRIGGER (LazyVim style: Tab toggles and moves down)
@@ -123,6 +129,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Move down automatically for smooth selection flow
 					if m.GlobalSearchSelect < len(m.GlobalSearchFiles)-1 {
 						m.GlobalSearchSelect++
+					} else {
+						// Loop to top
+						m.GlobalSearchSelect = 0
 					}
 				}
 				return m, nil
@@ -139,6 +148,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Move UP automatically
 					if m.GlobalSearchSelect > 0 {
 						m.GlobalSearchSelect--
+					} else {
+						// Loop to bottom
+						m.GlobalSearchSelect = len(m.GlobalSearchFiles) - 1
 					}
 				}
 				return m, nil
@@ -549,12 +561,22 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, m.keys.Up):
-			if state != nil && state.CursorIndex > 0 {
-				state.CursorIndex--
+			if state != nil {
+				if state.CursorIndex > 0 {
+					state.CursorIndex--
+				} else if len(state.VisibleNodes) > 0 {
+					// Loop to bottom
+					state.CursorIndex = len(state.VisibleNodes) - 1
+				}
 			}
 		case key.Matches(msg, m.keys.Down):
-			if state != nil && state.CursorIndex < len(state.VisibleNodes)-1 {
-				state.CursorIndex++
+			if state != nil {
+				if state.CursorIndex < len(state.VisibleNodes)-1 {
+					state.CursorIndex++
+				} else if len(state.VisibleNodes) > 0 {
+					// Loop to top
+					state.CursorIndex = 0
+				}
 			}
 
 		case key.Matches(msg, m.keys.Select):

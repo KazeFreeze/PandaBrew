@@ -398,16 +398,39 @@ func (m AppModel) renderGlobalSearchView() string {
 	if len(m.GlobalSearchFiles) == 0 && m.GlobalSearchInput.Value() != "" {
 		results = append(results, lipgloss.NewStyle().Foreground(m.Styles.ColorSubtext).Render("No results found."))
 	} else {
-		start := 0
-		if m.GlobalSearchSelect > 10 {
-			start = m.GlobalSearchSelect - 10
+		// Calculate available height for results
+		resultsHeight := modalHeight - 8 // approx height for header/footer
+		if resultsHeight < 1 {
+			resultsHeight = 1
 		}
-		end := min(start+10, len(m.GlobalSearchFiles))
+
+		start := 0
+		end := 0
+		total := len(m.GlobalSearchFiles)
+
+		if total <= resultsHeight {
+			start = 0
+			end = total
+		} else {
+			// Center the selection
+			start = m.GlobalSearchSelect - (resultsHeight / 2)
+			if start < 0 {
+				start = 0
+			}
+			end = start + resultsHeight
+
+			// Clamp to bottom
+			if end > total {
+				end = total
+				start = end - resultsHeight
+				if start < 0 {
+					start = 0
+				}
+			}
+		}
 
 		space := m.Session.GetActiveSpace()
 		query := m.GlobalSearchInput.Value()
-
-		// Local definition removed, now using global icons from styles.go
 
 		for i := start; i < end; i++ {
 			file := m.GlobalSearchFiles[i]
@@ -417,13 +440,11 @@ func (m AppModel) renderGlobalSearchView() string {
 			style := lipgloss.NewStyle().Foreground(m.Styles.ColorText)
 			cursor := "  "
 
-			// 1. Check if highlighted (focused)
 			if i == m.GlobalSearchSelect {
 				style = style.Foreground(m.Styles.ColorMauve).Bold(true).Background(m.Styles.ColorSurface)
 				cursor = "➜ "
 			}
 
-			// 2. Determine State Icon
 			isAlreadySelected := slices.Contains(space.Config.ManualSelections, file)
 			isStaged := m.GlobalSearchSelected[file]
 
@@ -442,18 +463,13 @@ func (m AppModel) renderGlobalSearchView() string {
 				marker = lipgloss.NewStyle().Foreground(m.Styles.ColorGreen).Bold(true).Render(iconCheckSquare + " ")
 			}
 
-			// 3. Get Semantic Icon
 			dummyNode := &TreeNode{
 				Name:  filepath.Base(file),
-				IsDir: false, // Global search typically returns files
+				IsDir: false,
 			}
 			iconChar, iconStyle := getFileIcon(dummyNode, m.Styles)
-			// Apply the row background to the icon so it blends with selection highlight
 			icon := iconStyle.Background(style.GetBackground()).Render(iconChar + " ")
 
-			// Compose the prefix: Cursor + Marker + Icon
-			// Note: render separately to preserve distinct foreground colors of marker/icon
-			// while using the row's background color.
 			cursorStr := lipgloss.NewStyle().Background(style.GetBackground()).Foreground(style.GetForeground()).Render(cursor)
 			markerStr := lipgloss.NewStyle().Background(style.GetBackground()).Render(marker)
 
@@ -463,7 +479,6 @@ func (m AppModel) renderGlobalSearchView() string {
 
 			prefixStr := cursorStr + markerStr + icon
 
-			// Render matched text
 			var styledName string
 			if matched, indices := SimpleFuzzyMatch(query, filepath.ToSlash(relPath)); matched && query != "" {
 				var sb strings.Builder
