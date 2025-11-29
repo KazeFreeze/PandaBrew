@@ -15,9 +15,11 @@ import (
 
 // View renders the UI.
 func (m AppModel) View() string {
-	// 1. Handle Overlays (Help / New Tab)
+	// 1. Handle Overlays (Help / New Tab / Global Search)
 	if m.ShowNewTab {
 		return m.renderNewTabView()
+	} else if m.ShowGlobalSearch {
+		return m.renderGlobalSearchView()
 	} else if m.ShowHelp {
 		return m.renderHelpView()
 	}
@@ -413,6 +415,130 @@ func (m AppModel) renderFooter(space *core.DirectorySpace, state *TabState) stri
 		Width(m.Width).
 		Background(m.Styles.ColorBase).
 		Render(footer)
+}
+
+func (m AppModel) renderGlobalSearchView() string {
+	modalWidth := min(m.Width-10, 70)
+	modalHeight := min(m.Height-10, 20)
+	contentWidth := modalWidth - 4
+
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(m.Styles.ColorMauve).
+		Background(m.Styles.ColorBase).
+		Width(contentWidth).
+		Align(lipgloss.Center).
+		Render(iconFolder + " Global File Search")
+
+	// Input Box
+	inputBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.Styles.ColorMauve).
+		BorderBackground(m.Styles.ColorBase).
+		Background(m.Styles.ColorBase).
+		Padding(0, 1).
+		Width(contentWidth - 2).
+		MarginTop(1).
+		Render(m.GlobalSearchInput.View())
+
+	// Results List
+	var results []string
+	if len(m.GlobalSearchFiles) == 0 && m.GlobalSearchInput.Value() != "" {
+		results = append(results, lipgloss.NewStyle().Foreground(m.Styles.ColorSubtext).Render("No results found."))
+	} else {
+		// Calculate visible range for scrolling
+		start := 0
+		if m.GlobalSearchSelect > 10 {
+			start = m.GlobalSearchSelect - 10
+		}
+		end := min(start+10, len(m.GlobalSearchFiles)) // Modernized using min
+
+		space := m.Session.GetActiveSpace()
+		query := m.GlobalSearchInput.Value()
+
+		for i := start; i < end; i++ {
+			file := m.GlobalSearchFiles[i]
+			relPath, _ := filepath.Rel(space.RootPath, file)
+			// Normalize for display consistency
+			displayPath := filepath.ToSlash(relPath)
+
+			style := lipgloss.NewStyle().Foreground(m.Styles.ColorText)
+			if i == m.GlobalSearchSelect {
+				style = style.Foreground(m.Styles.ColorMauve).Bold(true).Background(m.Styles.ColorSurface)
+				displayPath = "➜ " + displayPath
+			} else {
+				displayPath = "  " + displayPath
+			}
+
+			// Highlight matches in result list
+			var styledName string
+			// We match against the normalized path
+			if matched, indices := SimpleFuzzyMatch(query, displayPath); matched && query != "" {
+				var sb strings.Builder
+				lastIdx := 0
+
+				// Fix deprecated style.Copy() by assignment
+				highlightStyle := style
+				highlightStyle = highlightStyle.Foreground(m.Styles.ColorYellow).Bold(true)
+
+				for _, idx := range indices {
+					// Append text before match
+					sb.WriteString(style.Render(displayPath[lastIdx:idx]))
+					// Append match with highlight
+					sb.WriteString(highlightStyle.Render(string(displayPath[idx])))
+					lastIdx = idx + 1
+				}
+				sb.WriteString(style.Render(displayPath[lastIdx:]))
+				styledName = sb.String()
+			} else {
+				styledName = style.Render(displayPath)
+			}
+
+			results = append(results, styledName)
+		}
+	}
+
+	resultsList := lipgloss.JoinVertical(lipgloss.Left, results...)
+	resultsBox := lipgloss.NewStyle().
+		Width(contentWidth).
+		Height(modalHeight - 8). // Approximate remaining space
+		MarginTop(1).
+		Render(resultsList)
+
+	hints := lipgloss.NewStyle().
+		Foreground(m.Styles.ColorSubtext).
+		Italic(true).
+		Background(m.Styles.ColorBase).
+		Width(contentWidth).
+		Align(lipgloss.Center).
+		MarginTop(1).
+		Render("Up/Down to Navigate • Enter to Jump • Esc to Cancel")
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		inputBox,
+		resultsBox,
+		hints,
+	)
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.Styles.ColorMauve).
+		BorderBackground(m.Styles.ColorBase).
+		Background(m.Styles.ColorBase).
+		Padding(1, 2).
+		Width(modalWidth).
+		Height(modalHeight).
+		Render(content)
+
+	return lipgloss.Place(
+		m.Width, m.Height,
+		lipgloss.Center, lipgloss.Center,
+		box,
+		lipgloss.WithWhitespaceBackground(m.Styles.ColorBase),
+		lipgloss.WithWhitespaceChars(" "),
+	)
 }
 
 func (m AppModel) renderHelpView() string {

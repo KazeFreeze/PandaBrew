@@ -20,15 +20,23 @@ import (
 
 // AppModel is the single source of truth for the UI state.
 type AppModel struct {
-	Session         *core.Session
-	TabStates       map[string]*TabState
-	Spinner         spinner.Model
-	Progress        progress.Model
-	Help            help.Model
-	Viewport        viewport.Model
-	Loading         bool
-	ShowHelp        bool
-	ShowNewTab      bool
+	Session    *core.Session
+	TabStates  map[string]*TabState
+	Spinner    spinner.Model
+	Progress   progress.Model
+	Help       help.Model
+	Viewport   viewport.Model
+	Loading    bool
+	ShowHelp   bool
+	ShowNewTab bool
+
+	// Global Search State
+	ShowGlobalSearch   bool
+	GlobalSearchInput  textinput.Model
+	GlobalSearchCache  map[string][]string // Cache files per root path
+	GlobalSearchFiles  []string            // Currently filtered files
+	GlobalSearchSelect int                 // Selected index in the filtered list
+
 	NewTabInput     textinput.Model
 	StatusMessage   string
 	Width, Height   int
@@ -106,6 +114,18 @@ func InitialModel(session *core.Session) AppModel {
 	newTabInput.Cursor.Style = lipgloss.NewStyle().Foreground(styles.ColorMauve)
 	newTabInput.Cursor.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
 
+	// Global Search Input
+	globalSearchInput := textinput.New()
+	globalSearchInput.Placeholder = "Type to search files..."
+	globalSearchInput.CharLimit = 100
+	globalSearchInput.Width = 60
+	globalSearchInput.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
+	globalSearchInput.PlaceholderStyle = lipgloss.NewStyle().
+		Foreground(styles.ColorSubtext).
+		Background(styles.ColorBase)
+	globalSearchInput.Cursor.Style = lipgloss.NewStyle().Foreground(styles.ColorMauve)
+	globalSearchInput.Cursor.TextStyle = lipgloss.NewStyle().Background(styles.ColorBase)
+
 	h := help.New()
 	h.Styles.FullKey = styles.HelpKey
 	h.Styles.ShortKey = styles.HelpKey
@@ -113,14 +133,16 @@ func InitialModel(session *core.Session) AppModel {
 	h.Styles.ShortDesc = styles.HelpDesc
 
 	model := AppModel{
-		Session:     session,
-		TabStates:   make(map[string]*TabState),
-		Spinner:     s,
-		Progress:    prog,
-		Help:        h,
-		NewTabInput: newTabInput,
-		keys:        keys,
-		Styles:      styles,
+		Session:           session,
+		TabStates:         make(map[string]*TabState),
+		Spinner:           s,
+		Progress:          prog,
+		Help:              h,
+		NewTabInput:       newTabInput,
+		GlobalSearchInput: globalSearchInput,
+		GlobalSearchCache: make(map[string][]string),
+		keys:              keys,
+		Styles:            styles,
 	}
 
 	// Initialize tab states with styles

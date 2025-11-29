@@ -34,6 +34,8 @@ type keyMap struct {
 	NextMatch   key.Binding
 	PrevMatch   key.Binding
 	ClearSearch key.Binding
+	// Global Search (Fuzzy Finder)
+	GlobalSearch key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -44,10 +46,11 @@ func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Left, k.Right},
 		{k.Select, k.Tab, k.NewTab, k.CloseTab},
-		{k.Search, k.NextMatch, k.PrevMatch, k.ClearSearch}, // Added Search row
-		{k.Save, k.Export, k.Root, k.Output},
-		{k.Include, k.Exclude, k.Refresh},
+		{k.Search, k.NextMatch, k.PrevMatch, k.ClearSearch},
+		{k.GlobalSearch, k.Save, k.Export}, // Added GlobalSearch
+		{k.Root, k.Output, k.Include, k.Exclude},
 		{k.ToggleI, k.ToggleC, k.ToggleX, k.ToggleV},
+		{k.Refresh, k.SelectAll, k.DeselectAll},
 		{k.ToggleTheme, k.Help, k.Quit},
 	}
 }
@@ -149,10 +152,9 @@ var keys = keyMap{
 		key.WithKeys("ctrl+t"),
 		key.WithHelp("ctrl+t", "switch theme"),
 	),
-	// Search Implementation
 	Search: key.NewBinding(
 		key.WithKeys("/"),
-		key.WithHelp("/", "search"),
+		key.WithHelp("/", "search view"),
 	),
 	NextMatch: key.NewBinding(
 		key.WithKeys("n"),
@@ -165,5 +167,9 @@ var keys = keyMap{
 	ClearSearch: key.NewBinding(
 		key.WithKeys("esc"),
 		key.WithHelp("esc", "clear/cancel"),
+	),
+	GlobalSearch: key.NewBinding(
+		key.WithKeys("ctrl+p"),
+		key.WithHelp("ctrl+p", "global search"),
 	),
 }

@@ -11,6 +11,29 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// SimpleFuzzyMatch checks if 'pattern' is a subsequence of 'str'.
+// It returns true and the indices of the matched characters.
+func SimpleFuzzyMatch(pattern, str string) (bool, []int) {
+	if pattern == "" {
+		return true, nil
+	}
+	pattern = strings.ToLower(pattern)
+	strLower := strings.ToLower(str)
+
+	indices := []int{}
+	pIdx := 0
+	pRunes := []rune(pattern)
+
+	for i, r := range strLower {
+		if pIdx < len(pRunes) && r == pRunes[pIdx] {
+			indices = append(indices, i)
+			pIdx++
+		}
+	}
+
+	return pIdx == len(pRunes), indices
+}
+
 func calculateDepth(node *TreeNode, rootPath string) int {
 	rootDepth := strings.Count(rootPath, string(filepath.Separator))
 	nodeDepth := strings.Count(node.FullPath, string(filepath.Separator))
@@ -34,66 +57,6 @@ func CollectExpandedPaths(node *TreeNode) []string {
 		}
 	}
 	return paths
-}
-
-// getRawFileIcon returns the icon character without any styling
-func getRawFileIcon(node *TreeNode) string {
-	if node.IsDir {
-		if node.Expanded {
-			return iconFolderOpen
-		}
-		return iconFolder
-	}
-
-	ext := strings.ToLower(filepath.Ext(node.Name))
-	name := strings.ToLower(node.Name)
-
-	switch name {
-	case "dockerfile", ".dockerignore":
-		return iconDocker
-	case ".gitignore", ".gitattributes":
-		return iconGit
-	case "readme.md", "readme":
-		return iconMarkdown
-	case "package.json", "tsconfig.json":
-		return iconJSON
-	}
-
-	switch ext {
-	case ".go":
-		return iconGo
-	case ".md", ".markdown":
-		return iconMarkdown
-	case ".json":
-		return iconJSON
-	case ".yaml", ".yml":
-		return iconYAML
-	case ".js", ".jsx":
-		return iconJS
-	case ".ts", ".tsx":
-		return iconTS
-	case ".py":
-		return iconPython
-	case ".rs":
-		return iconRust
-	case ".html", ".htm":
-		return iconHTML
-	case ".css", ".scss", ".sass":
-		return iconCSS
-	case ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp":
-		return iconImage
-	case ".zip", ".tar", ".gz", ".rar", ".7z":
-		return iconArchive
-	case ".toml", ".ini", ".conf", ".config":
-		return iconConfig
-	case ".txt", ".log":
-		return iconText
-	default:
-		if isCodeFile(ext) {
-			return iconCode
-		}
-		return iconFile
-	}
 }
 
 // getFileIcon returns the icon character and its style.

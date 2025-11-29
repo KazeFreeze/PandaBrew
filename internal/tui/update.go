@@ -53,6 +53,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.NewTabInput.SetValue("")
 		}
 		return m, tea.Batch(cmds...)
+
+	// --- Global Search Messages ---
+	case AllFilesLoadedMsg:
+		m.GlobalSearchCache[msg.RootPath] = msg.Files
+		m.GlobalSearchFiles = msg.Files // Initial show all (or could be empty)
+		// Re-filter if there is existing input
+		if m.GlobalSearchInput.Value() != "" {
+			m.filterGlobalSearch()
+		}
+		m.StatusMessage = fmt.Sprintf("Indexed %d files", len(msg.Files))
+
 	}
 
 	// Handle New Tab Input Mode
@@ -77,6 +88,62 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.NewTabInput, cmd = m.NewTabInput.Update(msg)
+		return m, cmd
+	}
+
+	// Handle Global Search Input Mode
+	if m.ShowGlobalSearch {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "esc":
+				m.ShowGlobalSearch = false
+				m.GlobalSearchInput.Blur()
+				m.GlobalSearchInput.SetValue("")
+				return m, nil
+			case "up", "ctrl+k":
+				if m.GlobalSearchSelect > 0 {
+					m.GlobalSearchSelect--
+				}
+			case "down", "ctrl+j":
+				if m.GlobalSearchSelect < len(m.GlobalSearchFiles)-1 {
+					m.GlobalSearchSelect++
+				}
+			case "enter":
+				if len(m.GlobalSearchFiles) > 0 && m.GlobalSearchSelect < len(m.GlobalSearchFiles) {
+					selectedPath := m.GlobalSearchFiles[m.GlobalSearchSelect]
+					m.ShowGlobalSearch = false
+					m.GlobalSearchInput.Blur()
+
+					// JUMP LOGIC
+					if state != nil {
+						// 1. Set the target cursor path
+						state.TargetCursorPath = selectedPath
+
+						// 2. Add all parents to ExpandedPaths
+						parent := filepath.Dir(selectedPath)
+						for parent != space.RootPath && len(parent) > len(space.RootPath) {
+							state.TargetExpandedPaths[parent] = true
+							parent = filepath.Dir(parent)
+						}
+						state.TargetExpandedPaths[space.RootPath] = true // Ensure root is expanded
+
+						// 3. Trigger reload to expand missing nodes
+						m.StatusMessage = fmt.Sprintf("Jumping to %s...", filepath.Base(selectedPath))
+						m.Loading = true
+						cmds = append(cmds, loadDirectoryCmd(space.RootPath))
+					}
+				}
+				return m, tea.Batch(cmds...)
+			}
+		}
+
+		oldValue := m.GlobalSearchInput.Value()
+		m.GlobalSearchInput, cmd = m.GlobalSearchInput.Update(msg)
+		if m.GlobalSearchInput.Value() != oldValue {
+			m.filterGlobalSearch()
+			m.GlobalSearchSelect = 0 // Reset selection on typing
+		}
 		return m, cmd
 	}
 
@@ -122,8 +189,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else {
 						m.StatusMessage = "No matches found"
 					}
-					// Keep search query but clear input box logic for cleaner UI next time?
-					// No, keep value so user can edit it.
 				}
 
 				sm := core.NewSessionManager("")
@@ -246,12 +311,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Fix: Dynamically update all text inputs to use the new theme's background color
 			updateInputStyle(&m.NewTabInput, m.Styles)
+			updateInputStyle(&m.GlobalSearchInput, m.Styles) // Update Global Search
 			for _, ts := range m.TabStates {
 				updateInputStyle(&ts.InputRoot, m.Styles)
 				updateInputStyle(&ts.InputOutput, m.Styles)
 				updateInputStyle(&ts.InputInclude, m.Styles)
 				updateInputStyle(&ts.InputExclude, m.Styles)
-				updateInputStyle(&ts.InputSearch, m.Styles) // Update Search Input
+				updateInputStyle(&ts.InputSearch, m.Styles)
 			}
 
 			sm := core.NewSessionManager("")
@@ -312,6 +378,26 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ShowNewTab = true
 			m.NewTabInput.Focus()
 			return m, textinput.Blink
+
+		// GLOBAL SEARCH TRIGGER
+		case key.Matches(msg, m.keys.GlobalSearch):
+			if space != nil {
+				m.ShowGlobalSearch = true
+				m.GlobalSearchInput.Focus()
+
+				// Check if we have cache for this root
+				if cached, ok := m.GlobalSearchCache[space.RootPath]; ok {
+					m.GlobalSearchFiles = cached
+					m.filterGlobalSearch() // Filter against any existing input
+				} else {
+					// Trigger background scan
+					m.GlobalSearchFiles = []string{}
+					m.StatusMessage = "Indexing files..."
+					cmds = append(cmds, findAllFilesCmd(space.RootPath))
+				}
+				// Fix: Return cmds here properly
+				return m, tea.Batch(append(cmds, textinput.Blink)...)
+			}
 
 		case key.Matches(msg, m.keys.CloseTab):
 			if space != nil && len(m.Session.Spaces) > 1 {
@@ -498,6 +584,41 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m *AppModel) filterGlobalSearch() {
+	space := m.Session.GetActiveSpace()
+	if space == nil {
+		return
+	}
+	allFiles := m.GlobalSearchCache[space.RootPath]
+	query := m.GlobalSearchInput.Value()
+
+	if query == "" {
+		limit := min(100, len(allFiles)) // Modernized using min
+		m.GlobalSearchFiles = allFiles[:limit]
+		return
+	}
+
+	var filtered []string
+	count := 0
+	limit := 50
+
+	for _, file := range allFiles {
+		// Use relative path for matching
+		relPath, _ := filepath.Rel(space.RootPath, file)
+		// Fix: Normalize to forward slashes for matching on Windows
+		normalizedRelPath := filepath.ToSlash(relPath)
+
+		if matched, _ := SimpleFuzzyMatch(query, normalizedRelPath); matched {
+			filtered = append(filtered, file)
+			count++
+			if count >= limit {
+				break
+			}
+		}
+	}
+	m.GlobalSearchFiles = filtered
 }
 
 func updateInputStyle(t *textinput.Model, s Styles) {

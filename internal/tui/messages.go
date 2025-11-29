@@ -2,6 +2,7 @@
 package tui
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -100,5 +101,37 @@ func validateNewTabCmd(path string) tea.Cmd {
 			Path:  absPath,
 			Valid: true,
 		}
+	}
+}
+
+// --- Global Search Messages ---
+
+// AllFilesLoadedMsg carries the complete list of files in the project.
+type AllFilesLoadedMsg struct {
+	RootPath string
+	Files    []string
+}
+
+// findAllFilesCmd walks the directory tree efficiently to find all files.
+func findAllFilesCmd(root string) tea.Cmd {
+	return func() tea.Msg {
+		var files []string
+		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			// Skip typical heavy directories to improve performance
+			if d.IsDir() {
+				name := d.Name()
+				if name == ".git" || name == "node_modules" || name == "vendor" || name == "target" || name == "dist" || name == "build" || name == ".idea" || name == ".vscode" {
+					return filepath.SkipDir
+				}
+			} else {
+				// Only add files
+				files = append(files, path)
+			}
+			return nil
+		})
+		return AllFilesLoadedMsg{RootPath: root, Files: files}
 	}
 }
